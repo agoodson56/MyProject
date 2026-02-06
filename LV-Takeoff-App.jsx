@@ -742,35 +742,9 @@ export default function LVTakeoffSystem() {
         return;
       }
 
-      // Fallback: Demo mode with simulated stages
-      const stages = [
-        { status: 'Uploading files to processing queue...', progress: 5 },
-        { status: 'Extracting text from specifications...', progress: 15 },
-        { status: 'Parsing specification sections (Div 27, 28)...', progress: 25 },
-        { status: 'Detecting legends on plan sheets...', progress: 35 },
-        { status: 'Learning symbol types from legends...', progress: 45 },
-        { status: 'Scanning sheets for device symbols...', progress: 55 },
-        { status: 'Detecting MDF/IDF closet locations...', progress: 65 },
-        { status: 'Assigning devices to closets...', progress: 72 },
-        { status: 'Calculating cable routes (90° routing)...', progress: 80 },
-        { status: 'Computing J-hook quantities...', progress: 85 },
-        { status: 'Cross-referencing specs with plans...', progress: 90 },
-        { status: 'Detecting discrepancies and issues...', progress: 95 },
-        { status: 'Generating Master BOM...', progress: 98 },
-        { status: 'Complete!', progress: 100 }
-      ];
-
-      for (const stage of stages) {
-        setProcessingStatus(stage.status);
-        setProcessingProgress(stage.progress);
-        await new Promise(r => setTimeout(r, 800 + Math.random() * 400));
-      }
-
-      // Generate mock results
-      const mockResults = generateMockResults();
-      setResults(mockResults);
+      // No AI analysis was performed - user must enable AI and upload floor plans
+      setProcessingStatus('❌ No floor plans analyzed. Enable AI Analysis and upload floor plans to generate device counts.');
       setIsProcessing(false);
-      setCurrentStep(3);
     } catch (error) {
       console.error('[AI] Processing error:', error);
       setProcessingStatus(`❌ Error: ${error.message}`);
@@ -823,9 +797,7 @@ export default function LVTakeoffSystem() {
 
       cableSummary: estimateCabling(aiResults),
 
-      closets: aiResults.closets || [
-        { name: 'MDF', type: 'MDF', floor: 'Level 1', dataPorts: 48, voicePorts: 24, fiberPorts: 12 }
-      ],
+      closets: aiResults.closets || generateClosetsFromDevices(aiResults),
 
       issues: aiResults.issues.map((issue, i) => ({
         id: i + 1,
@@ -880,6 +852,35 @@ export default function LVTakeoffSystem() {
     return bomItems;
   };
 
+  // Generate closet summary from AI device counts - calculates cable runs based on actual devices
+  const generateClosetsFromDevices = (aiResults) => {
+    const totalDevices = Object.values(aiResults.aggregatedDevices || {}).reduce((sum, d) => sum + d.totalQty, 0);
+
+    // If no devices, return empty closets
+    if (totalDevices === 0) {
+      return [];
+    }
+
+    // Calculate cable runs = 1 cable per device (not multiplied)
+    // Each device gets exactly 1 cable run
+    const avgCableFtPerDevice = 100; // Industry standard estimate
+
+    // Generate MDF with all devices (single closet model for simple projects)
+    return [{
+      name: 'MDF',
+      type: 'MDF',
+      floor: 'Level 1',
+      room: 'Main Telecom Room',
+      dataPorts: totalDevices,
+      voicePorts: 0,
+      fiberPorts: 0,
+      cableRuns: totalDevices, // 1:1 ratio - each device = 1 cable run
+      totalCableFt: totalDevices * avgCableFtPerDevice
+    }];
+  };
+
+  // NOTE: generateMockResults below is DEPRECATED and not called anymore
+  // Real AI analysis is now required - no demo/mock data fallback
   const generateMockResults = () => {
     const floors = ['Level 1', 'Level 2', 'Level 3'];
     const closets = ['MDF', 'IDF-1', 'IDF-2', 'IDF-3'];
