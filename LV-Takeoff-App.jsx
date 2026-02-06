@@ -1128,15 +1128,16 @@ export default function LVTakeoffSystem() {
         if (fullProject.settings) setProjectSettings(fullProject.settings);
 
         // Load per-project passwords and default to viewer (read-only)
+        // Database has pm_password and ops_password, map ops to estimator role
         setPasswords({
           pm: fullProject.pm_password || 'PM1234',
-          ops: fullProject.ops_password || 'OPS1234'
+          estimator: fullProject.ops_password || 'OPS1234'
         });
         setUserRole('viewer'); // Always start in view-only mode
 
         setShowDashboard(false);
         setCurrentStep(fullProject.device_counts ? 3 : 0); // Go to results if data exists
-        console.log('✅ Project loaded in VIEW-ONLY mode');
+        console.log('✅ Project loaded in VIEW-ONLY mode. PM Password:', fullProject.pm_password, 'OPS Password:', fullProject.ops_password);
       } else {
         alert('Project not found');
       }
