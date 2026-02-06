@@ -24,7 +24,7 @@ export default function LVTakeoffSystem() {
   const [confirmedSymbols, setConfirmedSymbols] = useState([]);
   const [projectSettings, setProjectSettings] = useState(DEFAULT_SETTINGS);
   const [userRole, setUserRole] = useState('viewer'); // 'estimator', 'pm', 'viewer'
-  const [passwords, setPasswords] = useState({ estimator: 'Admin123', pm: 'Admin123' });
+  const [passwords, setPasswords] = useState({ estimator: 'Estimator2026!', pm: 'Manager2026!' });
   const [showPasswordModal, setShowPasswordModal] = useState(null); // null or role name
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -1955,7 +1955,12 @@ export default function LVTakeoffSystem() {
               {/* PM Portal Tab */}
               {activeTab === 'pmPortal' && (
                 <div className="p-6">
-                  <ProjectManagerPortal bomData={generateDetailedBOM(results)} canEdit={userRole === 'pm'} />
+                  <ProjectManagerPortal
+                    bomData={generateDetailedBOM(results)}
+                    canEdit={userRole === 'pm'}
+                    passwords={passwords}
+                    onPasswordChange={setPasswords}
+                  />
                 </div>
               )}
 

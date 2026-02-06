@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, Calendar, Clock, Package, CheckCircle, AlertTriangle, Save, Plus, Trash2, ChevronDown, ChevronRight, BarChart3, Target } from 'lucide-react';
+import { User, Calendar, Clock, Package, CheckCircle, AlertTriangle, Save, Plus, Trash2, ChevronDown, ChevronRight, BarChart3, Target, Edit2, X, Settings, Lock } from 'lucide-react';
 
-// LocalStorage key for daily logs
+// LocalStorage keys
 const STORAGE_KEY = 'lv-takeoff-daily-logs';
+const PROGRESS_STORAGE_KEY = 'lv-takeoff-item-progress';
+const PASSWORDS_STORAGE_KEY = 'lv-takeoff-passwords';
 
 // Initial progress state generator
 export function initializeProgress(bomData) {
@@ -24,9 +26,11 @@ export function initializeProgress(bomData) {
                 id: `mdf-${s.key}`,
                 closet: 'MDF',
                 name: s.name,
-                materials: bomData.mdf[s.key].materials.map(m => ({
+                materials: bomData.mdf[s.key].materials.map((m, idx) => ({
                     ...m,
+                    materialId: `mdf-${s.key}-${idx}`,
                     installed: 0,
+                    laborUsed: 0,
                     totalCost: m.qty * m.unitCost,
                     totalLabor: m.qty * m.laborHrs
                 })),
@@ -52,9 +56,11 @@ export function initializeProgress(bomData) {
                     id: `${idf.name.toLowerCase()}-${s.key}`,
                     closet: idf.name,
                     name: s.name,
-                    materials: idf[s.key].materials.map(m => ({
+                    materials: idf[s.key].materials.map((m, idx) => ({
                         ...m,
+                        materialId: `${idf.name.toLowerCase()}-${s.key}-${idx}`,
                         installed: 0,
+                        laborUsed: 0,
                         totalCost: m.qty * m.unitCost,
                         totalLabor: m.qty * m.laborHrs
                     })),
@@ -102,7 +108,53 @@ function DailyLogEntry({ entry, onDelete }) {
     );
 }
 
-function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLog }) {
+// Editable cell component for inline editing
+function EditableCell({ value, unit, onSave, color = 'emerald', isHours = false }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState(value);
+
+    const handleSave = () => {
+        const newValue = isHours ? parseFloat(editValue) || 0 : parseInt(editValue) || 0;
+        onSave(newValue);
+        setIsEditing(false);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') handleSave();
+        if (e.key === 'Escape') setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <div className="flex items-center gap-1">
+                <input
+                    type="number"
+                    step={isHours ? "0.25" : "1"}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onBlur={handleSave}
+                    autoFocus
+                    className="w-16 px-2 py-1 bg-slate-900 border border-cyan-500 rounded text-sm text-right focus:outline-none"
+                />
+                <span className="text-xs text-slate-500">{unit}</span>
+            </div>
+        );
+    }
+
+    return (
+        <button
+            onClick={() => { setEditValue(value); setIsEditing(true); }}
+            className={`group flex items-center gap-1 hover:bg-slate-800/50 px-2 py-1 rounded transition-colors`}
+        >
+            <span className={`text-${color}-400`}>{isHours ? value.toFixed(1) : value}</span>
+            <span className="text-slate-500 text-xs">{unit}</span>
+            <Edit2 className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+    );
+}
+
+function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, onDeleteLog }) {
     const [expanded, setExpanded] = useState(false);
     const [showAddForm, setShowAddForm] = useState(false);
     const [selectedItem, setSelectedItem] = useState('');
@@ -113,7 +165,7 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
     const totalQty = module.materials.reduce((sum, m) => sum + m.qty, 0);
     const installedQty = module.materials.reduce((sum, m) => sum + m.installed, 0);
     const totalLabor = module.materials.reduce((sum, m) => sum + m.totalLabor, 0);
-    const laborUsed = module.laborUsed;
+    const laborUsed = module.materials.reduce((sum, m) => sum + (m.laborUsed || 0), 0);
     const totalCost = module.materials.reduce((sum, m) => sum + m.totalCost, 0);
     const installedCost = module.materials.reduce((sum, m) => sum + (m.installed * m.unitCost), 0);
 
@@ -129,13 +181,6 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
         if (!material) return;
 
         const hoursValue = parseFloat(hoursUsed) || 0;
-        console.log('📊 Adding entry:', {
-            item: selectedItem,
-            qtyInstalled: parseInt(qtyInstalled),
-            hoursEntered: hoursUsed,
-            hoursParsed: hoursValue,
-            moduleId: module.id
-        });
 
         onAddLog({
             id: Date.now(),
@@ -153,9 +198,8 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
         setShowAddForm(false);
     };
 
-    // Check if over budget - material is over if any item has more installed than required
+    // Check if over budget
     const materialOver = module.materials.some(m => m.installed > m.qty);
-    // Labor is over if used exceeds budgeted
     const laborOver = laborUsed > totalLabor;
 
     return (
@@ -172,7 +216,7 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
                     </div>
                 </div>
                 <div className="flex items-center gap-6">
-                    {/* Material Status with Green/Red Light */}
+                    {/* Material Status */}
                     <div className="flex items-center gap-2">
                         <div className={`w-4 h-4 rounded-full ${materialOver ? 'bg-red-500 shadow-lg shadow-red-500/50' : 'bg-emerald-500 shadow-lg shadow-emerald-500/50'}`} />
                         <div className="w-32">
@@ -183,7 +227,7 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
                             <ProgressBar value={installedQty} max={totalQty} color={materialOver ? 'red' : 'emerald'} />
                         </div>
                     </div>
-                    {/* Labor Status with Green/Red Light */}
+                    {/* Labor Status */}
                     <div className="flex items-center gap-2">
                         <div className={`w-4 h-4 rounded-full ${laborOver ? 'bg-red-500 shadow-lg shadow-red-500/50' : 'bg-emerald-500 shadow-lg shadow-emerald-500/50'}`} />
                         <div className="w-32">
@@ -204,7 +248,7 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
 
             {expanded && (
                 <div className="p-4 pt-0 space-y-4">
-                    {/* Material Progress Table */}
+                    {/* Material Progress Table with Editable Cells */}
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
@@ -212,6 +256,8 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
                                     <th className="text-left pb-2 font-medium">Item</th>
                                     <th className="text-right pb-2 font-medium">Required</th>
                                     <th className="text-right pb-2 font-medium">Installed</th>
+                                    <th className="text-right pb-2 font-medium">Labor Budget</th>
+                                    <th className="text-right pb-2 font-medium">Labor Used</th>
                                     <th className="text-right pb-2 font-medium">Remaining</th>
                                     <th className="text-right pb-2 font-medium">Progress</th>
                                 </tr>
@@ -220,11 +266,37 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
                                 {module.materials.map((m, i) => {
                                     const remaining = m.qty - m.installed;
                                     const pct = m.qty > 0 ? (m.installed / m.qty) * 100 : 0;
+                                    const laborRemaining = m.totalLabor - (m.laborUsed || 0);
                                     return (
                                         <tr key={i} className="border-b border-slate-800/30">
                                             <td className="py-2">{m.item}</td>
                                             <td className="py-2 text-right text-white">{m.qty} {m.unit}</td>
-                                            <td className="py-2 text-right text-emerald-400">{m.installed} {m.unit}</td>
+                                            <td className="py-2 text-right">
+                                                {canEdit ? (
+                                                    <EditableCell
+                                                        value={m.installed}
+                                                        unit={m.unit}
+                                                        color="emerald"
+                                                        onSave={(val) => onUpdateMaterial(module.id, m.materialId, 'installed', val)}
+                                                    />
+                                                ) : (
+                                                    <span className="text-emerald-400">{m.installed} {m.unit}</span>
+                                                )}
+                                            </td>
+                                            <td className="py-2 text-right text-slate-400">{m.totalLabor.toFixed(1)}h</td>
+                                            <td className="py-2 text-right">
+                                                {canEdit ? (
+                                                    <EditableCell
+                                                        value={m.laborUsed || 0}
+                                                        unit="h"
+                                                        color="cyan"
+                                                        isHours={true}
+                                                        onSave={(val) => onUpdateMaterial(module.id, m.materialId, 'laborUsed', val)}
+                                                    />
+                                                ) : (
+                                                    <span className="text-cyan-400">{(m.laborUsed || 0).toFixed(1)}h</span>
+                                                )}
+                                            </td>
                                             <td className="py-2 text-right text-amber-400">{remaining} {m.unit}</td>
                                             <td className="py-2 text-right">
                                                 <div className="w-20 ml-auto">
@@ -337,86 +409,170 @@ function ModuleCard({ module, canEdit, onUpdate, dailyLogs, onAddLog, onDeleteLo
     );
 }
 
-export default function ProjectManagerPortal({ bomData, canEdit = true }) {
+// Password Settings Modal
+function PasswordSettings({ passwords, onSave, onClose }) {
+    const [estimatorPw, setEstimatorPw] = useState(passwords.estimator);
+    const [pmPw, setPmPw] = useState(passwords.pm);
+
+    const handleSave = () => {
+        onSave({ estimator: estimatorPw, pm: pmPw });
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6 w-96">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                        <Lock className="w-5 h-5 text-amber-400" />
+                        Password Settings
+                    </h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm text-slate-400 mb-1">Estimator Password</label>
+                        <input
+                            type="text"
+                            value={estimatorPw}
+                            onChange={(e) => setEstimatorPw(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-slate-400 mb-1">PM Password</label>
+                        <input
+                            type="text"
+                            value={pmPw}
+                            onChange={(e) => setPmPw(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-6">
+                    <button onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white">
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+                    >
+                        Save Passwords
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function ProjectManagerPortal({ bomData, canEdit = true, passwords, onPasswordChange }) {
     const [modules, setModules] = useState(() => initializeProgress(bomData));
     const [dailyLogs, setDailyLogs] = useState([]);
     const [activeCloset, setActiveCloset] = useState('ALL');
     const [isLoaded, setIsLoaded] = useState(false);
+    const [showPasswordSettings, setShowPasswordSettings] = useState(false);
 
-    // Load daily logs from localStorage on mount
+    // Load saved progress from localStorage
     useEffect(() => {
         try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                const parsedLogs = JSON.parse(saved);
-                setDailyLogs(parsedLogs);
-                // Apply loaded logs to modules
+            // Load daily logs
+            const savedLogs = localStorage.getItem(STORAGE_KEY);
+            if (savedLogs) {
+                setDailyLogs(JSON.parse(savedLogs));
+            }
+
+            // Load item progress (installed/laborUsed per material)
+            const savedProgress = localStorage.getItem(PROGRESS_STORAGE_KEY);
+            if (savedProgress) {
+                const progressData = JSON.parse(savedProgress);
                 const updated = initializeProgress(bomData);
-                parsedLogs.forEach(log => {
-                    const module = updated.find(m => m.id === log.moduleId);
-                    if (module) {
-                        const material = module.materials.find(m => m.item === log.item);
-                        if (material) {
-                            material.installed += log.qtyInstalled;
+
+                // Apply saved progress to modules
+                updated.forEach(module => {
+                    module.materials.forEach(material => {
+                        if (progressData[material.materialId]) {
+                            material.installed = progressData[material.materialId].installed || 0;
+                            material.laborUsed = progressData[material.materialId].laborUsed || 0;
                         }
-                        module.laborUsed += log.hoursUsed;
-                    }
+                    });
                 });
+
                 setModules(updated);
-                console.log(`✅ Loaded ${parsedLogs.length} daily log entries from localStorage`);
+                console.log('✅ Loaded saved item progress');
             }
         } catch (err) {
-            console.error('Failed to load daily logs from localStorage:', err);
+            console.error('Failed to load saved data:', err);
         }
         setIsLoaded(true);
     }, []);
 
-    // Save daily logs to localStorage whenever they change
+    // Save item progress whenever modules change
+    useEffect(() => {
+        if (isLoaded) {
+            try {
+                // Build progress object
+                const progressData = {};
+                modules.forEach(module => {
+                    module.materials.forEach(material => {
+                        if (material.installed > 0 || material.laborUsed > 0) {
+                            progressData[material.materialId] = {
+                                installed: material.installed,
+                                laborUsed: material.laborUsed
+                            };
+                        }
+                    });
+                });
+                localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressData));
+            } catch (err) {
+                console.error('Failed to save progress:', err);
+            }
+        }
+    }, [modules, isLoaded]);
+
+    // Save daily logs
     useEffect(() => {
         if (isLoaded) {
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(dailyLogs));
-                console.log(`💾 Saved ${dailyLogs.length} daily log entries to localStorage`);
             } catch (err) {
-                console.error('Failed to save daily logs to localStorage:', err);
+                console.error('Failed to save daily logs:', err);
             }
         }
     }, [dailyLogs, isLoaded]);
 
-    // Apply logs to modules
-    const applyLogs = (logs) => {
-        const updated = initializeProgress(bomData);
-        logs.forEach(log => {
-            const module = updated.find(m => m.id === log.moduleId);
-            if (module) {
-                const material = module.materials.find(m => m.item === log.item);
-                if (material) {
-                    material.installed += log.qtyInstalled;
-                }
-                module.laborUsed += log.hoursUsed;
-                console.log('⚙️ Applied log:', log.item, '| Hours:', log.hoursUsed, '| Module labor now:', module.laborUsed);
+    // Update a specific material's installed qty or laborUsed
+    const handleUpdateMaterial = (moduleId, materialId, field, value) => {
+        setModules(prev => prev.map(module => {
+            if (module.id === moduleId) {
+                return {
+                    ...module,
+                    materials: module.materials.map(mat => {
+                        if (mat.materialId === materialId) {
+                            return { ...mat, [field]: value };
+                        }
+                        return mat;
+                    })
+                };
             }
-        });
-        return updated;
+            return module;
+        }));
     };
 
     const handleAddLog = (log) => {
-        const newLogs = [...dailyLogs, log];
-        setDailyLogs(newLogs);
-        setModules(applyLogs(newLogs));
+        setDailyLogs(prev => [...prev, log]);
     };
 
     const handleDeleteLog = (logId) => {
-        const newLogs = dailyLogs.filter(l => l.id !== logId);
-        setDailyLogs(newLogs);
-        setModules(applyLogs(newLogs));
+        setDailyLogs(prev => prev.filter(l => l.id !== logId));
     };
 
     // Calculate project-level stats
     const totalMaterial = modules.reduce((sum, m) => sum + m.materials.reduce((s, mat) => s + mat.totalCost, 0), 0);
     const installedMaterial = modules.reduce((sum, m) => sum + m.materials.reduce((s, mat) => s + (mat.installed * mat.unitCost), 0), 0);
     const totalLabor = modules.reduce((sum, m) => sum + m.materials.reduce((s, mat) => s + mat.totalLabor, 0), 0);
-    const usedLabor = modules.reduce((sum, m) => sum + m.laborUsed, 0);
+    const usedLabor = modules.reduce((sum, m) => sum + m.materials.reduce((s, mat) => s + (mat.laborUsed || 0), 0), 0);
 
     const closets = ['ALL', 'MDF', ...bomData.idfs.map(i => i.name)];
     const filteredModules = activeCloset === 'ALL' ? modules : modules.filter(m => m.closet === activeCloset);
@@ -429,11 +585,35 @@ export default function ProjectManagerPortal({ bomData, canEdit = true }) {
                     <h2 className="text-2xl font-bold">Project Manager Portal</h2>
                     <p className="text-white">Track daily installation progress</p>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 rounded-xl">
-                    <User className="w-4 h-4 text-white" />
-                    <span className="text-sm">Lead Technician</span>
+                <div className="flex items-center gap-3">
+                    {canEdit && (
+                        <button
+                            onClick={() => setShowPasswordSettings(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
+                        >
+                            <Settings className="w-4 h-4" />
+                            Passwords
+                        </button>
+                    )}
+                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 rounded-xl">
+                        <User className="w-4 h-4 text-white" />
+                        <span className="text-sm">Lead Technician</span>
+                    </div>
                 </div>
             </div>
+
+            {/* Password Settings Modal */}
+            {showPasswordSettings && (
+                <PasswordSettings
+                    passwords={passwords || { estimator: 'Admin123', pm: 'Admin123' }}
+                    onSave={(newPasswords) => {
+                        onPasswordChange?.(newPasswords);
+                        // Also save to localStorage
+                        localStorage.setItem(PASSWORDS_STORAGE_KEY, JSON.stringify(newPasswords));
+                    }}
+                    onClose={() => setShowPasswordSettings(false)}
+                />
+            )}
 
             {/* Project Overview */}
             <div className="grid grid-cols-4 gap-4">
@@ -520,10 +700,7 @@ export default function ProjectManagerPortal({ bomData, canEdit = true }) {
                         key={module.id}
                         module={module}
                         canEdit={canEdit}
-                        onUpdate={(updated) => {
-                            if (!canEdit) return;
-                            setModules(modules.map(m => m.id === updated.id ? updated : m));
-                        }}
+                        onUpdateMaterial={handleUpdateMaterial}
                         dailyLogs={dailyLogs}
                         onAddLog={canEdit ? handleAddLog : () => { }}
                         onDeleteLog={canEdit ? handleDeleteLog : () => { }}
