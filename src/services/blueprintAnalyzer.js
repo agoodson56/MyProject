@@ -501,7 +501,7 @@ function buildValidationPrompt(gridCounts, legendInfo) {
 
     return `You are an expert low-voltage construction estimator AND code compliance specialist performing a FINAL VALIDATION COUNT.
 
-YOUR TASK: Count ALL devices on this floor plan and validate CODE COMPLIANCE.
+YOUR TASK: Count ALL devices on this floor plan, validate CODE COMPLIANCE, and IDENTIFY which devices are fed from each MDF/IDF.
 ${gridSummary}
 ${symbolDescriptions}
 
@@ -509,8 +509,17 @@ VALIDATION RULES:
 1. This is your FINAL validation pass - be extremely thorough
 2. Count EVERY device symbol on the floor plan
 3. Group counts by system and device type
-4. Check for code compliance issues
-5. Identify telecom closets (MDF/IDF locations)
+4. IDENTIFY which MDF or IDF feeds each group of devices (based on proximity and floor layout)
+5. Check for code compliance issues
+6. Identify ALL telecom closets (MDF/IDF/TR locations)
+
+CLOSET ANALYSIS - CRITICAL:
+- Look for MDF (Main Distribution Frame), IDF (Intermediate Distribution Frame), TR (Telecom Room) symbols
+- Determine which closet would logically feed each device based on:
+  * Physical proximity on the floor plan
+  * Floor/wing location
+  * Standard cabling topology (devices connect to nearest closet)
+- For multi-floor buildings: MDF typically on main floor, IDFs on each floor
 
 SYSTEMS TO COUNT:
 - CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP
@@ -527,32 +536,74 @@ CODE COMPLIANCE CHECKS (NFPA 72, NEC, TIA-568, ADA, IBC):
 - Card readers at 48" max AFF
 - Work areas within 295ft of TR/IDF
 
-OUTPUT FORMAT (JSON) - KEEP RESPONSE COMPACT:
+OUTPUT FORMAT (JSON):
 {
     "sheetName": "T1.01",
-    "summary": {
-        "CABLING": {"Data Outlet": 24, "WAP": 8, "Voice Outlet": 12},
-        "FIRE": {"Smoke Detector": 32, "Pull Station": 4, "Horn/Strobe": 16},
-        "ACCESS": {"Card Reader": 8, "REX Sensor": 8, "Door Contact": 8},
-        "CCTV": {"Dome Camera": 12, "Bullet Camera": 4}
-    },
     "closets": [
-        {"name": "MDF", "floor": "Level 1", "location": "Main electrical room"},
-        {"name": "IDF-1", "floor": "Level 1", "location": "East wing"}
+        {
+            "name": "MDF",
+            "floor": "Level 1",
+            "location": "Main electrical room, near lobby",
+            "feedsTo": ["IDF-1", "IDF-2"],
+            "equipment": {"Rack Units": 2, "Patch Panels": 4, "Switches": 2},
+            "devicesFed": {
+                "CABLING": {"Data Outlet": 45, "Voice Outlet": 20, "WAP": 8},
+                "ACCESS": {"Card Reader": 4, "REX Sensor": 4, "Door Contact": 4},
+                "CCTV": {"Dome Camera": 6}
+            },
+            "cableRuns": 87,
+            "notes": "Main hub - feeds lobby, admin offices, and connects to IDFs"
+        },
+        {
+            "name": "IDF-1",
+            "floor": "Level 1",
+            "location": "East wing electrical closet",
+            "feedsFrom": "MDF",
+            "equipment": {"Rack Units": 1, "Patch Panels": 2, "Switches": 1},
+            "devicesFed": {
+                "CABLING": {"Data Outlet": 32, "Voice Outlet": 12, "WAP": 4},
+                "CCTV": {"Dome Camera": 4, "Bullet Camera": 2}
+            },
+            "cableRuns": 54,
+            "notes": "Feeds east wing classrooms and offices"
+        },
+        {
+            "name": "IDF-2",
+            "floor": "Level 2",
+            "location": "Second floor telecom room",
+            "feedsFrom": "MDF",
+            "devicesFed": {
+                "CABLING": {"Data Outlet": 28, "WAP": 6},
+                "ACCESS": {"Card Reader": 2}
+            },
+            "cableRuns": 36,
+            "notes": "Feeds second floor - all areas"
+        }
     ],
+    "summary": {
+        "CABLING": {"Data Outlet": 105, "WAP": 18, "Voice Outlet": 32},
+        "FIRE": {"Smoke Detector": 42, "Pull Station": 6, "Horn/Strobe": 24},
+        "ACCESS": {"Card Reader": 6, "REX Sensor": 4, "Door Contact": 4},
+        "CCTV": {"Dome Camera": 10, "Bullet Camera": 2}
+    },
     "codeCompliance": {
         "status": "WARNINGS",
         "violations": [
-            {"code": "NFPA72_STROBE", "severity": "HIGH", "location": "Restrooms", "issue": "Missing strobe in restroom areas"}
+            {"code": "NFPA72_STROBE", "severity": "HIGH", "location": "Restrooms", "issue": "Missing strobe"}
         ],
         "notes": "1 code issue found"
     },
-    "overallConfidence": 0.94,
-    "totalDevices": 108,
-    "notes": "Validation complete"
+    "overallConfidence": 0.92,
+    "totalDevices": 251,
+    "totalCableRuns": 177,
+    "notes": "Complete closet-by-closet breakdown"
 }
 
-IMPORTANT: Keep response COMPACT - only include summary counts, not individual device coordinates. Count accurately!`;
+IMPORTANT: 
+- Group ALL cabling/access/CCTV devices by which closet feeds them
+- Fire alarm devices typically connect to FACP (Fire Alarm Control Panel), not data closets
+- Calculate total cable runs per closet
+- Keep response structured but complete!`;
 }
 
 async function fullSheetValidation(filePart, gridCounts, legendInfo) {
