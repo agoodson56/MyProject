@@ -539,6 +539,35 @@ CODE COMPLIANCE CHECKS (NFPA 72, NEC, TIA-568, ADA, IBC):
 OUTPUT FORMAT (JSON):
 {
     "sheetName": "T1.01",
+    "backbones": [
+        {
+            "from": "MDF",
+            "to": "IDF-1",
+            "type": "Fiber",
+            "strandCount": 12,
+            "category": "OM3",
+            "estimatedLength": "150ft",
+            "notes": "Horizontal run - same floor"
+        },
+        {
+            "from": "MDF",
+            "to": "IDF-2",
+            "type": "Fiber",
+            "strandCount": 12,
+            "category": "OM3",
+            "estimatedLength": "75ft",
+            "notes": "Riser - vertical run to 2nd floor"
+        },
+        {
+            "from": "MDF",
+            "to": "IDF-1",
+            "type": "Copper",
+            "pairCount": 25,
+            "category": "Cat6",
+            "estimatedLength": "150ft",
+            "notes": "Voice backbone"
+        }
+    ],
     "closets": [
         {
             "name": "MDF",
@@ -559,6 +588,7 @@ OUTPUT FORMAT (JSON):
             "floor": "Level 1",
             "location": "East wing electrical closet",
             "feedsFrom": "MDF",
+            "backboneType": "Fiber OM3 12-strand + Cat6 25-pair",
             "equipment": {"Rack Units": 1, "Patch Panels": 2, "Switches": 1},
             "devicesFed": {
                 "CABLING": {"Data Outlet": 32, "Voice Outlet": 12, "WAP": 4},
@@ -572,6 +602,7 @@ OUTPUT FORMAT (JSON):
             "floor": "Level 2",
             "location": "Second floor telecom room",
             "feedsFrom": "MDF",
+            "backboneType": "Fiber OM3 12-strand",
             "devicesFed": {
                 "CABLING": {"Data Outlet": 28, "WAP": 6},
                 "ACCESS": {"Card Reader": 2}
@@ -596,7 +627,8 @@ OUTPUT FORMAT (JSON):
     "overallConfidence": 0.92,
     "totalDevices": 251,
     "totalCableRuns": 177,
-    "notes": "Complete closet-by-closet breakdown"
+    "totalBackbones": 3,
+    "notes": "Complete closet-by-closet breakdown with backbone cabling"
 }
 
 IMPORTANT: 
