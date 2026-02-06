@@ -1,0 +1,693 @@
+/**
+ * Blueprint AI Analyzer Service - Enhanced Multi-Pass Analysis
+ * Uses Gemini Vision API with 3-pass verification for maximum accuracy
+ * 
+ * Pass 1: Legend Extraction - Learn symbol meanings from drawing legend
+ * Pass 2: Grid-Based Count - Divide sheet into quadrants for systematic counting
+ * Pass 3: Full Sheet Validation - Cross-validate totals and resolve discrepancies
+ */
+
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_UPLOAD_URL = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
+
+// ============================================================================
+// FILE UPLOAD UTILITIES
+// ============================================================================
+
+/**
+ * Upload a file to Gemini File API (for PDFs and large files)
+ * Uses resumable upload protocol for reliability
+ */
+async function uploadToGemini(file) {
+    console.log(`[AI] Uploading PDF: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+
+    // Step 1: Start resumable upload session
+    const startResponse = await fetch(
+        `${GEMINI_UPLOAD_URL}?key=${GEMINI_API_KEY}`,
+        {
+            method: 'POST',
+            headers: {
+                'X-Goog-Upload-Protocol': 'resumable',
+                'X-Goog-Upload-Command': 'start',
+                'X-Goog-Upload-Header-Content-Length': file.size.toString(),
+                'X-Goog-Upload-Header-Content-Type': file.type || 'application/pdf',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                file: { displayName: file.name }
+            })
+        }
+    );
+
+    if (!startResponse.ok) {
+        const errorText = await startResponse.text();
+        console.error('[AI] Upload start failed:', startResponse.status, errorText);
+        throw new Error(`Upload start failed: ${startResponse.status}`);
+    }
+
+    const uploadUrl = startResponse.headers.get('X-Goog-Upload-URL');
+    console.log('[AI] Got upload URL, uploading file data...');
+
+    // Step 2: Upload file data
+    const fileBuffer = await file.arrayBuffer();
+    const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+            'X-Goog-Upload-Offset': '0',
+            'X-Goog-Upload-Command': 'upload, finalize',
+            'Content-Length': file.size.toString()
+        },
+        body: fileBuffer
+    });
+
+    if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('[AI] Upload data failed:', uploadResponse.status, errorText);
+        throw new Error(`Upload data failed: ${uploadResponse.status}`);
+    }
+
+    const result = await uploadResponse.json();
+    console.log('[AI] File uploaded:', result.file?.name, 'State:', result.file?.state);
+
+    // Step 3: Wait for file to be processed (poll for ACTIVE state)
+    let uploadedFile = result.file;
+    let attempts = 0;
+    const maxAttempts = 60; // 60 seconds max wait for large PDFs
+
+    while (uploadedFile.state === 'PROCESSING' && attempts < maxAttempts) {
+        console.log(`[AI] Waiting for PDF processing... (${attempts + 1}s)`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Check file status
+        const fileName = uploadedFile.name.replace('files/', '');
+        const statusResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/files/${fileName}?key=${GEMINI_API_KEY}`
+        );
+
+        if (statusResponse.ok) {
+            uploadedFile = await statusResponse.json();
+        }
+        attempts++;
+    }
+
+    if (uploadedFile.state !== 'ACTIVE') {
+        throw new Error(`File processing failed. State: ${uploadedFile.state}`);
+    }
+
+    console.log('[AI] PDF ready for analysis:', uploadedFile.uri);
+    return uploadedFile;
+}
+
+/**
+ * Helper: Convert File to base64
+ */
+async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * Prepare file for Gemini API (handles both PDF and images)
+ */
+async function prepareFileForGemini(file) {
+    const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    
+    if (isPDF) {
+        try {
+            const uploadedFile = await uploadToGemini(file);
+            return {
+                fileData: {
+                    mimeType: uploadedFile.mimeType,
+                    fileUri: uploadedFile.uri
+                }
+            };
+        } catch (uploadError) {
+            console.error('[AI] PDF upload failed, trying base64 fallback:', uploadError);
+            const base64Data = await fileToBase64(file);
+            return {
+                inlineData: {
+                    mimeType: 'application/pdf',
+                    data: base64Data
+                }
+            };
+        }
+    } else {
+        const base64Data = await fileToBase64(file);
+        const mimeType = file.type || 'image/png';
+        return {
+            inlineData: {
+                mimeType: mimeType,
+                data: base64Data
+            }
+        };
+    }
+}
+
+/**
+ * Execute a Gemini API call with the given prompt and file
+ */
+async function callGeminiAPI(prompt, filePart, temperature = 0.1) {
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    filePart
+                ]
+            }],
+            generationConfig: {
+                temperature: temperature,
+                maxOutputTokens: 16384
+            }
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[AI] API Error:', response.status, errorText);
+        throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!textResponse) {
+        throw new Error('No response from Gemini API');
+    }
+
+    // Parse JSON from response
+    const jsonMatch = textResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
+        textResponse.match(/```\s*([\s\S]*?)\s*```/) ||
+        [null, textResponse];
+
+    return JSON.parse((jsonMatch[1] || textResponse).trim());
+}
+
+// ============================================================================
+// PASS 1: LEGEND EXTRACTION
+// ============================================================================
+
+const LEGEND_EXTRACTION_PROMPT = `You are an expert low-voltage construction estimator. Your task is to find and extract the SYMBOL LEGEND from this construction drawing.
+
+FOCUS AREAS:
+1. Look for a "LEGEND", "SYMBOL LEGEND", "SYMBOL KEY", or "SYMBOLS" box on the drawing
+2. This is typically in a corner of the sheet or on a separate legend sheet
+3. It shows symbols with their descriptions
+
+EXTRACT ALL SYMBOLS for these systems:
+- STRUCTURED CABLING: Data outlets, voice outlets, fiber, WAP/wireless access points
+- SECURITY/INTRUSION: Motion sensors, glass break, door contacts, keypads
+- ACCESS CONTROL: Card readers, REX sensors, electric strikes, mag locks
+- CCTV: Dome cameras, bullet cameras, PTZ cameras
+- FIRE ALARM: Smoke detectors, heat detectors, pull stations, horn/strobes
+- INTERCOM/PAGING: Speakers, intercoms
+
+OUTPUT FORMAT (JSON):
+{
+    "legendFound": true,
+    "legendLocation": "bottom-right corner",
+    "symbols": [
+        {
+            "symbol": "Circle with D",
+            "description": "Data Outlet",
+            "system": "CABLING",
+            "visualDescription": "Small circle with letter D inside"
+        },
+        {
+            "symbol": "Triangle",
+            "description": "Dome Camera",
+            "system": "CCTV",
+            "visualDescription": "Solid triangle pointing up"
+        }
+    ],
+    "notes": "Legend shows 12 symbol types total"
+}
+
+If NO LEGEND is found, return:
+{
+    "legendFound": false,
+    "symbols": [],
+    "notes": "No legend found on this sheet - will use standard industry symbols"
+}`;
+
+async function extractLegend(filePart) {
+    console.log('[AI] Pass 1: Extracting legend symbols...');
+    try {
+        const result = await callGeminiAPI(LEGEND_EXTRACTION_PROMPT, filePart);
+        console.log('[AI] Pass 1 Complete:', result.legendFound ? `Found ${result.symbols?.length || 0} symbols` : 'No legend found');
+        return result;
+    } catch (error) {
+        console.error('[AI] Pass 1 Error:', error);
+        return { legendFound: false, symbols: [], notes: 'Legend extraction failed' };
+    }
+}
+
+// ============================================================================
+// PASS 2: GRID-BASED COUNTING
+// ============================================================================
+
+function buildGridCountingPrompt(legendInfo) {
+    const symbolDescriptions = legendInfo.legendFound && legendInfo.symbols?.length > 0
+        ? `\n\nLEGEND SYMBOLS TO LOOK FOR (from this drawing's legend):\n${legendInfo.symbols.map(s => `- ${s.symbol}: ${s.description} (${s.system})`).join('\n')}`
+        : '';
+
+    return `You are an expert low-voltage construction estimator. CAREFULLY count EVERY device symbol on this floor plan.
+
+CRITICAL COUNTING RULES:
+1. Mentally divide the plan into a 3x3 GRID (9 zones: top-left, top-center, top-right, etc.)
+2. Count each zone SEPARATELY then sum for totals
+3. Count EVERY symbol, even if partially obscured or overlapping
+4. When in doubt, COUNT IT - it's better to overcount than undercount
+5. For repeating units (apartments, hotel rooms), count EACH UNIT separately
+${symbolDescriptions}
+
+SYSTEMS TO COUNT:
+1. CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP (Wireless Access Points)
+2. ACCESS: Card Readers, REX Sensors, Door Contacts, Electric Strikes, Mag Locks
+3. CCTV: Dome Cameras, Bullet Cameras, PTZ Cameras
+4. FIRE: Smoke Detectors, Heat Detectors, Pull Stations, Horn/Strobes, Duct Detectors
+5. INTERCOM: Intercom Stations, Speakers, Video Intercoms
+6. A/V: Audio speakers, displays, projector locations
+
+OUTPUT FORMAT (JSON):
+{
+    "sheetName": "T1.01",
+    "gridCounts": {
+        "topLeft": { "CABLING": {"Data Outlet": 3, "WAP": 1}, "FIRE": {"Smoke Detector": 2} },
+        "topCenter": { "CABLING": {"Data Outlet": 5}, "CCTV": {"Dome Camera": 1} },
+        "topRight": { "CABLING": {"Data Outlet": 4, "Voice Outlet": 2} },
+        "middleLeft": { "ACCESS": {"Card Reader": 1} },
+        "middleCenter": { "FIRE": {"Smoke Detector": 3} },
+        "middleRight": { "CABLING": {"Data Outlet": 2} },
+        "bottomLeft": { "FIRE": {"Pull Station": 1, "Horn/Strobe": 2} },
+        "bottomCenter": { "CABLING": {"Data Outlet": 3} },
+        "bottomRight": { "CCTV": {"Dome Camera": 2} }
+    },
+    "totalsBySystem": {
+        "CABLING": {"Data Outlet": 17, "Voice Outlet": 2, "WAP": 1},
+        "ACCESS": {"Card Reader": 1},
+        "CCTV": {"Dome Camera": 3},
+        "FIRE": {"Smoke Detector": 5, "Pull Station": 1, "Horn/Strobe": 2}
+    },
+    "confidence": 0.92,
+    "countingNotes": "Counted 9 zones systematically. Some symbols in top-right partially obscured."
+}
+
+COUNT EVERY SINGLE SYMBOL. Do not skip any zones.`;
+}
+
+async function gridBasedCount(filePart, legendInfo) {
+    console.log('[AI] Pass 2: Grid-based systematic counting...');
+    try {
+        const prompt = buildGridCountingPrompt(legendInfo);
+        const result = await callGeminiAPI(prompt, filePart);
+        console.log('[AI] Pass 2 Complete:', JSON.stringify(result.totalsBySystem || {}));
+        return result;
+    } catch (error) {
+        console.error('[AI] Pass 2 Error:', error);
+        return { gridCounts: {}, totalsBySystem: {}, confidence: 0, countingNotes: 'Grid counting failed' };
+    }
+}
+
+// ============================================================================
+// PASS 3: FULL SHEET VALIDATION WITH BOUNDING BOXES
+// ============================================================================
+
+function buildValidationPrompt(gridCounts, legendInfo) {
+    const gridSummary = gridCounts.totalsBySystem 
+        ? `\n\nPREVIOUS COUNT (to validate):\n${JSON.stringify(gridCounts.totalsBySystem, null, 2)}`
+        : '';
+    
+    const symbolDescriptions = legendInfo.legendFound && legendInfo.symbols?.length > 0
+        ? `\n\nKNOWN SYMBOLS FROM LEGEND:\n${legendInfo.symbols.map(s => `- ${s.description}: ${s.visualDescription}`).join('\n')}`
+        : '';
+
+    return `You are an expert low-voltage construction estimator performing a FINAL VALIDATION COUNT.
+
+YOUR TASK: Count ALL devices on this floor plan and provide bounding box coordinates for each one.
+${gridSummary}
+${symbolDescriptions}
+
+VALIDATION RULES:
+1. This is your FINAL validation pass - be extremely thorough
+2. For EACH device found, provide approximate bounding box coordinates
+3. x, y = top-left corner as percentage (0-100) of image width/height
+4. width, height = size as percentage of image dimensions
+5. Assign a confidence score (0.0-1.0) to each detection
+6. Flag any uncertain detections for human review
+
+SYSTEMS TO VALIDATE:
+- CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP
+- ACCESS: Card Readers, REX Sensors, Door Contacts, Electric Strikes, Mag Locks
+- CCTV: Dome Cameras, Bullet Cameras, PTZ Cameras
+- FIRE: Smoke Detectors, Heat Detectors, Pull Stations, Horn/Strobes
+- INTERCOM: Intercom Stations, Speakers
+- A/V: Audio speakers, displays
+
+OUTPUT FORMAT (JSON):
+{
+    "sheetName": "T1.01",
+    "devices": [
+        {
+            "id": 1,
+            "system": "CABLING",
+            "type": "Data Outlet",
+            "x": 15.5,
+            "y": 23.2,
+            "width": 2.0,
+            "height": 2.0,
+            "confidence": 0.95,
+            "zone": "topLeft",
+            "notes": "Near door, office area"
+        },
+        {
+            "id": 2,
+            "system": "FIRE",
+            "type": "Smoke Detector",
+            "x": 45.0,
+            "y": 30.0,
+            "width": 1.5,
+            "height": 1.5,
+            "confidence": 0.98,
+            "zone": "topCenter",
+            "notes": "Hallway ceiling"
+        }
+    ],
+    "summary": {
+        "CABLING": {"Data Outlet": 24, "WAP": 8, "Voice Outlet": 12},
+        "FIRE": {"Smoke Detector": 32, "Pull Station": 4, "Horn/Strobe": 16},
+        "ACCESS": {"Card Reader": 8, "REX Sensor": 8},
+        "CCTV": {"Dome Camera": 12, "Bullet Camera": 4}
+    },
+    "lowConfidenceDevices": [
+        {"id": 5, "type": "Data Outlet", "confidence": 0.65, "reason": "Symbol partially obscured"}
+    ],
+    "discrepancies": [],
+    "closets": [
+        {"name": "MDF", "floor": "Level 1", "x": 10.0, "y": 15.0, "type": "MDF"},
+        {"name": "IDF-1", "floor": "Level 1", "x": 85.0, "y": 50.0, "type": "IDF"}
+    ],
+    "overallConfidence": 0.94,
+    "notes": "Final validation complete. 3 low-confidence symbols flagged for review."
+}
+
+BE THOROUGH - mark EVERY device you can identify!`;
+}
+
+async function fullSheetValidation(filePart, gridCounts, legendInfo) {
+    console.log('[AI] Pass 3: Full sheet validation with bounding boxes...');
+    try {
+        const prompt = buildValidationPrompt(gridCounts, legendInfo);
+        const result = await callGeminiAPI(prompt, filePart);
+        console.log('[AI] Pass 3 Complete:', result.devices?.length || 0, 'devices with coordinates');
+        return result;
+    } catch (error) {
+        console.error('[AI] Pass 3 Error:', error);
+        return { devices: [], summary: {}, overallConfidence: 0, notes: 'Validation failed' };
+    }
+}
+
+// ============================================================================
+// DISCREPANCY RECONCILIATION
+// ============================================================================
+
+function reconcileResults(legendInfo, gridCounts, validationResult) {
+    const discrepancies = [];
+    
+    // Compare grid counts vs validation counts
+    const gridTotals = gridCounts.totalsBySystem || {};
+    const validationTotals = validationResult.summary || {};
+    
+    for (const system of Object.keys({ ...gridTotals, ...validationTotals })) {
+        const gridDevices = gridTotals[system] || {};
+        const validDevices = validationTotals[system] || {};
+        
+        for (const deviceType of Object.keys({ ...gridDevices, ...validDevices })) {
+            const gridCount = gridDevices[deviceType] || 0;
+            const validCount = validDevices[deviceType] || 0;
+            
+            if (gridCount !== validCount) {
+                const diff = Math.abs(gridCount - validCount);
+                const pctDiff = gridCount > 0 ? (diff / gridCount * 100) : 100;
+                
+                discrepancies.push({
+                    system,
+                    deviceType,
+                    gridCount,
+                    validationCount: validCount,
+                    difference: validCount - gridCount,
+                    percentDiff: pctDiff.toFixed(1),
+                    severity: pctDiff > 20 ? 'HIGH' : pctDiff > 10 ? 'MEDIUM' : 'LOW',
+                    resolution: validCount > gridCount ? 'Using higher validation count' : 'Review recommended'
+                });
+            }
+        }
+    }
+    
+    // Use validation results as final (more detailed with bounding boxes)
+    // but incorporate discrepancy warnings
+    return {
+        ...validationResult,
+        legend: legendInfo,
+        gridCounts: gridCounts.gridCounts,
+        discrepancies,
+        analysisMethod: '3-pass-multipass',
+        passResults: {
+            pass1_legend: legendInfo.legendFound,
+            pass2_gridConfidence: gridCounts.confidence || 0,
+            pass3_validationConfidence: validationResult.overallConfidence || 0
+        }
+    };
+}
+
+// ============================================================================
+// MAIN EXPORT FUNCTIONS
+// ============================================================================
+
+/**
+ * Analyze a floor plan using 3-pass multi-pass analysis for maximum accuracy
+ */
+export async function analyzeFloorPlan(file, legendInfo = null) {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'your-gemini-api-key-here') {
+        throw new Error('Please set your Gemini API key in the .env file (VITE_GEMINI_API_KEY)');
+    }
+
+    console.log(`[AI] Starting 3-Pass Multi-Pass Analysis for: ${file.name}`);
+    const startTime = Date.now();
+    
+    // Prepare file once, reuse for all passes
+    const filePart = await prepareFileForGemini(file);
+    
+    // PASS 1: Extract legend
+    const extractedLegend = legendInfo || await extractLegend(filePart);
+    
+    // PASS 2: Grid-based systematic counting
+    const gridCounts = await gridBasedCount(filePart, extractedLegend);
+    
+    // PASS 3: Full validation with bounding boxes
+    const validationResult = await fullSheetValidation(filePart, gridCounts, extractedLegend);
+    
+    // Reconcile all results
+    const finalResult = reconcileResults(extractedLegend, gridCounts, validationResult);
+    
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[AI] Multi-Pass Analysis Complete in ${elapsed}s - ${finalResult.devices?.length || 0} devices detected`);
+    
+    return finalResult;
+}
+
+/**
+ * Quick single-pass analysis for preview/fast results
+ */
+export async function analyzeFloorPlanQuick(file) {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'your-gemini-api-key-here') {
+        throw new Error('Please set your Gemini API key in the .env file (VITE_GEMINI_API_KEY)');
+    }
+
+    console.log(`[AI] Quick Analysis for: ${file.name}`);
+    const filePart = await prepareFileForGemini(file);
+    
+    const quickPrompt = `Quickly count all low-voltage device symbols on this floor plan. Group by system (CABLING, ACCESS, CCTV, FIRE, INTERCOM). Return JSON: { "summary": { "CABLING": {"Data Outlet": 10}, "FIRE": {"Smoke Detector": 5} }, "totalDevices": 15, "confidence": 0.85 }`;
+    
+    return await callGeminiAPI(quickPrompt, filePart, 0.2);
+}
+
+/**
+ * Analyze multiple floor plan sheets and aggregate results
+ */
+export async function analyzeAllSheets(planFiles, onProgress) {
+    const allResults = {
+        sheets: [],
+        aggregatedDevices: {},
+        closets: [],
+        totalsBySystem: {
+            CABLING: {},
+            ACCESS: {},
+            CCTV: {},
+            FIRE: {},
+            INTERCOM: {},
+            'A/V': {}
+        },
+        issues: [],
+        discrepancies: []
+    };
+
+    for (let i = 0; i < planFiles.length; i++) {
+        const file = planFiles[i];
+        onProgress?.({
+            current: i + 1,
+            total: planFiles.length,
+            fileName: file.name,
+            status: `Analyzing ${file.name} (3-pass)...`
+        });
+
+        try {
+            const result = await analyzeFloorPlan(file);
+            allResults.sheets.push({
+                fileName: file.name,
+                ...result
+            });
+
+            // Aggregate device counts from summary
+            if (result.summary) {
+                for (const [system, devices] of Object.entries(result.summary)) {
+                    if (!allResults.totalsBySystem[system]) {
+                        allResults.totalsBySystem[system] = {};
+                    }
+                    for (const [deviceType, count] of Object.entries(devices)) {
+                        allResults.totalsBySystem[system][deviceType] = 
+                            (allResults.totalsBySystem[system][deviceType] || 0) + count;
+                        
+                        // Also track in aggregatedDevices for compatibility
+                        const key = `${system}:${deviceType}`;
+                        if (!allResults.aggregatedDevices[key]) {
+                            allResults.aggregatedDevices[key] = {
+                                symbol: deviceType,
+                                system: system,
+                                totalQty: 0,
+                                bySheet: []
+                            };
+                        }
+                        allResults.aggregatedDevices[key].totalQty += count;
+                        allResults.aggregatedDevices[key].bySheet.push({
+                            sheet: file.name,
+                            qty: count
+                        });
+                    }
+                }
+            }
+
+            // Collect closets
+            if (result.closets) {
+                allResults.closets.push(...result.closets.map(c => ({
+                    ...c,
+                    sheet: file.name
+                })));
+            }
+            
+            // Collect discrepancies
+            if (result.discrepancies?.length > 0) {
+                allResults.discrepancies.push(...result.discrepancies.map(d => ({
+                    ...d,
+                    sheet: file.name
+                })));
+            }
+
+        } catch (error) {
+            allResults.issues.push({
+                sheet: file.name,
+                severity: 'CRITICAL',
+                message: `Failed to analyze: ${error.message}`
+            });
+        }
+    }
+
+    return allResults;
+}
+
+/**
+ * Convert results to the format expected by the BOM generator
+ */
+export function convertToDeviceCounts(aiResults) {
+    const deviceCounts = {
+        CABLING: {},
+        ACCESS: {},
+        CCTV: {},
+        FIRE: {},
+        INTERCOM: {},
+        'A/V': {}
+    };
+
+    // Use totalsBySystem if available (from analyzeAllSheets)
+    if (aiResults.totalsBySystem) {
+        for (const [system, devices] of Object.entries(aiResults.totalsBySystem)) {
+            if (deviceCounts[system]) {
+                for (const [deviceType, count] of Object.entries(devices)) {
+                    const cleanKey = deviceType.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+                    deviceCounts[system][cleanKey] = {
+                        name: deviceType,
+                        qty: count,
+                        unit: 'EA'
+                    };
+                }
+            }
+        }
+    }
+    
+    // Fallback to aggregatedDevices
+    if (aiResults.aggregatedDevices) {
+        for (const [key, deviceData] of Object.entries(aiResults.aggregatedDevices)) {
+            const system = deviceData.system || 'CABLING';
+            const cleanKey = deviceData.symbol.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+            
+            if (deviceCounts[system]) {
+                deviceCounts[system][cleanKey] = {
+                    name: deviceData.symbol,
+                    qty: deviceData.totalQty,
+                    locations: deviceData.bySheet?.map(s => s.locations).filter(Boolean),
+                    unit: 'EA'
+                };
+            }
+        }
+    }
+
+    return deviceCounts;
+}
+
+/**
+ * Test the API connection
+ */
+export async function testApiConnection() {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'your-gemini-api-key-here') {
+        return { success: false, error: 'API key not configured' };
+    }
+
+    try {
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: 'Say "API connected successfully"' }] }]
+            })
+        });
+
+        if (response.ok) {
+            return { success: true, model: 'gemini-2.0-flash', features: ['multi-pass-analysis', 'legend-extraction', 'grid-counting'] };
+        } else {
+            const error = await response.text();
+            return { success: false, error };
+        }
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
