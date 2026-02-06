@@ -1,9 +1,6 @@
 // Projects API - Cloudflare Pages Function
 // Handles CRUD operations for projects
-
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
+// Updated to work with single-table schema where job_number is the primary key
 
 function corsHeaders() {
     return {
@@ -16,7 +13,6 @@ function corsHeaders() {
 
 // GET /api/projects - List all projects
 // GET /api/projects?job_number=XXX - Get by job number
-// POST /api/projects - Create new project
 export async function onRequestGet(context) {
     const { env, request } = context;
     const url = new URL(request.url);
@@ -40,11 +36,8 @@ export async function onRequestGet(context) {
         if (jobNumber) {
             // Get specific project by job number
             results = await env.DB.prepare(`
-        SELECT p.*, pd.device_counts, pd.bom_data, pd.settings, pd.issues
-        FROM projects p
-        LEFT JOIN project_data pd ON p.id = pd.project_id
-        WHERE p.job_number = ?
-      `).bind(jobNumber).first();
+                SELECT * FROM projects WHERE job_number = ?
+            `).bind(jobNumber).first();
 
             if (!results) {
                 return new Response(JSON.stringify({ error: 'Project not found' }), {
@@ -62,20 +55,20 @@ export async function onRequestGet(context) {
         } else if (search) {
             // Search projects
             results = await env.DB.prepare(`
-        SELECT id, job_number, project_name, client_name, created_at, updated_at, status
-        FROM projects
-        WHERE job_number LIKE ? OR project_name LIKE ? OR client_name LIKE ?
-        ORDER BY updated_at DESC
-      `).bind(`%${search}%`, `%${search}%`, `%${search}%`).all();
+                SELECT job_number, project_name, client_name, address, status, created_at, updated_at
+                FROM projects
+                WHERE job_number LIKE ? OR project_name LIKE ? OR client_name LIKE ?
+                ORDER BY updated_at DESC
+            `).bind(`%${search}%`, `%${search}%`, `%${search}%`).all();
             results = results.results;
 
         } else {
             // List all projects
             results = await env.DB.prepare(`
-        SELECT id, job_number, project_name, client_name, created_at, updated_at, status
-        FROM projects
-        ORDER BY updated_at DESC
-      `).all();
+                SELECT job_number, project_name, client_name, address, status, created_at, updated_at
+                FROM projects
+                ORDER BY updated_at DESC
+            `).all();
             results = results.results;
         }
 
@@ -94,8 +87,16 @@ export async function onRequestGet(context) {
     }
 }
 
+// POST /api/projects - Create new project
 export async function onRequestPost(context) {
     const { env, request } = context;
+
+    if (!env.DB) {
+        return new Response(JSON.stringify({ error: 'D1 database not bound' }), {
+            status: 500,
+            headers: corsHeaders()
+        });
+    }
 
     try {
         const data = await request.json();
@@ -108,29 +109,38 @@ export async function onRequestPost(context) {
             });
         }
 
-        const id = generateId();
         const now = new Date().toISOString();
 
-        // Insert project
-        await env.DB.prepare(`
-      INSERT INTO projects (id, job_number, project_name, client_name, address, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).bind(id, job_number, project_name, client_name || null, address || null, now, now).run();
+        // Generate random passwords for new projects
+        const pmPassword = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const opsPassword = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-        // Insert project data
+        // Insert project into single table
         await env.DB.prepare(`
-      INSERT INTO project_data (project_id, device_counts, bom_data, settings, issues, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(
-            id,
+            INSERT INTO projects (job_number, project_name, client_name, address, device_counts, bom_data, settings, issues, pm_password, ops_password, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            job_number,
+            project_name,
+            client_name || null,
+            address || null,
             device_counts ? JSON.stringify(device_counts) : null,
             bom_data ? JSON.stringify(bom_data) : null,
             settings ? JSON.stringify(settings) : null,
             issues ? JSON.stringify(issues) : null,
+            pmPassword,
+            opsPassword,
+            now,
             now
         ).run();
 
-        return new Response(JSON.stringify({ id, job_number, project_name, created_at: now }), {
+        return new Response(JSON.stringify({
+            job_number,
+            project_name,
+            created_at: now,
+            pm_password: pmPassword,
+            ops_password: opsPassword
+        }), {
             status: 201,
             headers: corsHeaders()
         });
@@ -148,10 +158,18 @@ export async function onRequestPost(context) {
     }
 }
 
+// PUT /api/projects?job_number=XXX - Update project
 export async function onRequestPut(context) {
     const { env, request } = context;
     const url = new URL(request.url);
     const jobNumber = url.searchParams.get('job_number');
+
+    if (!env.DB) {
+        return new Response(JSON.stringify({ error: 'D1 database not bound' }), {
+            status: 500,
+            headers: corsHeaders()
+        });
+    }
 
     if (!jobNumber) {
         return new Response(JSON.stringify({ error: 'job_number query param required' }), {
@@ -162,12 +180,12 @@ export async function onRequestPut(context) {
 
     try {
         const data = await request.json();
-        const { project_name, client_name, address, device_counts, bom_data, settings, issues, status } = data;
+        const { project_name, client_name, address, device_counts, bom_data, settings, issues, status, pm_password, ops_password } = data;
         const now = new Date().toISOString();
 
-        // Get project ID
-        const project = await env.DB.prepare('SELECT id FROM projects WHERE job_number = ?').bind(jobNumber).first();
-        if (!project) {
+        // Check if project exists
+        const existing = await env.DB.prepare('SELECT job_number FROM projects WHERE job_number = ?').bind(jobNumber).first();
+        if (!existing) {
             return new Response(JSON.stringify({ error: 'Project not found' }), {
                 status: 404,
                 headers: corsHeaders()
@@ -176,37 +194,32 @@ export async function onRequestPut(context) {
 
         // Update project
         await env.DB.prepare(`
-      UPDATE projects SET
-        project_name = COALESCE(?, project_name),
-        client_name = COALESCE(?, client_name),
-        address = COALESCE(?, address),
-        status = COALESCE(?, status),
-        updated_at = ?
-      WHERE id = ?
-    `).bind(project_name, client_name, address, status, now, project.id).run();
-
-        // Update project data
-        await env.DB.prepare(`
-      INSERT INTO project_data (project_id, device_counts, bom_data, settings, issues, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(project_id) DO UPDATE SET
-        device_counts = COALESCE(?, device_counts),
-        bom_data = COALESCE(?, bom_data),
-        settings = COALESCE(?, settings),
-        issues = COALESCE(?, issues),
-        updated_at = ?
-    `).bind(
-            project.id,
+            UPDATE projects SET
+                project_name = COALESCE(?, project_name),
+                client_name = COALESCE(?, client_name),
+                address = COALESCE(?, address),
+                status = COALESCE(?, status),
+                device_counts = COALESCE(?, device_counts),
+                bom_data = COALESCE(?, bom_data),
+                settings = COALESCE(?, settings),
+                issues = COALESCE(?, issues),
+                pm_password = COALESCE(?, pm_password),
+                ops_password = COALESCE(?, ops_password),
+                updated_at = ?
+            WHERE job_number = ?
+        `).bind(
+            project_name || null,
+            client_name || null,
+            address || null,
+            status || null,
             device_counts ? JSON.stringify(device_counts) : null,
             bom_data ? JSON.stringify(bom_data) : null,
             settings ? JSON.stringify(settings) : null,
             issues ? JSON.stringify(issues) : null,
+            pm_password || null,
+            ops_password || null,
             now,
-            device_counts ? JSON.stringify(device_counts) : null,
-            bom_data ? JSON.stringify(bom_data) : null,
-            settings ? JSON.stringify(settings) : null,
-            issues ? JSON.stringify(issues) : null,
-            now
+            jobNumber
         ).run();
 
         return new Response(JSON.stringify({ success: true, updated_at: now }), {
@@ -220,10 +233,18 @@ export async function onRequestPut(context) {
     }
 }
 
+// DELETE /api/projects?job_number=XXX - Delete project
 export async function onRequestDelete(context) {
     const { env, request } = context;
     const url = new URL(request.url);
     const jobNumber = url.searchParams.get('job_number');
+
+    if (!env.DB) {
+        return new Response(JSON.stringify({ error: 'D1 database not bound' }), {
+            status: 500,
+            headers: corsHeaders()
+        });
+    }
 
     if (!jobNumber) {
         return new Response(JSON.stringify({ error: 'job_number query param required' }), {
@@ -253,6 +274,7 @@ export async function onRequestDelete(context) {
     }
 }
 
+// OPTIONS - CORS preflight
 export async function onRequestOptions() {
     return new Response(null, {
         headers: corsHeaders()
