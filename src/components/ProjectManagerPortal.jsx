@@ -330,17 +330,30 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                                                 })()}
                                             </td>
                                             <td className="py-2 text-right">
-                                                {canEdit ? (
-                                                    <EditableCell
-                                                        value={m.laborUsed || 0}
-                                                        unit="h"
-                                                        color="cyan"
-                                                        isHours={true}
-                                                        onSave={(val) => onUpdateMaterial(module.id, m.materialId, 'laborUsed', val)}
-                                                    />
-                                                ) : (
-                                                    <span className="text-cyan-400">{(m.laborUsed || 0).toFixed(1)}h</span>
-                                                )}
+                                                {/* Actual hours - green if beating budget, red if not */}
+                                                {(() => {
+                                                    const laborPerUnit = m.laborHrs || (m.totalLabor / m.qty);
+                                                    const adjustedBudget = m.installed * laborPerUnit;
+                                                    const actualHours = m.laborUsed || 0;
+                                                    const isBeating = actualHours <= adjustedBudget || adjustedBudget === 0;
+
+                                                    if (canEdit) {
+                                                        return (
+                                                            <EditableCell
+                                                                value={actualHours}
+                                                                unit="h"
+                                                                color={isBeating ? 'emerald' : 'red'}
+                                                                isHours={true}
+                                                                onSave={(val) => onUpdateMaterial(module.id, m.materialId, 'laborUsed', val)}
+                                                            />
+                                                        );
+                                                    }
+                                                    return (
+                                                        <span className={isBeating ? 'text-emerald-400' : 'text-red-400'}>
+                                                            {actualHours.toFixed(1)}h
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="py-2 text-right text-amber-400">{remaining} {m.unit}</td>
                                             <td className="py-2 text-right">
@@ -355,15 +368,43 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                         </table>
                     </div>
 
-                    {/* Labor Summary */}
-                    <div className="flex items-center justify-between p-3 bg-slate-800/30 rounded-lg">
-                        <span className="text-white">Labor Hours</span>
-                        <div className="flex items-center gap-4">
-                            <span>Budgeted: <span className="text-cyan-400 font-medium">{totalLabor.toFixed(1)}h</span></span>
-                            <span>Used: <span className={`font-medium ${laborUsed > totalLabor ? 'text-red-400' : 'text-emerald-400'}`}>{laborUsed.toFixed(1)}h</span></span>
-                            <span>Remaining: <span className="text-amber-400 font-medium">{Math.max(0, totalLabor - laborUsed).toFixed(1)}h</span></span>
-                        </div>
-                    </div>
+                    {/* Labor Summary - Budget vs Actual */}
+                    {(() => {
+                        // Calculate adjusted budget based on installed qty
+                        const adjustedLaborBudget = module.materials.reduce((sum, m) => {
+                            const laborPerUnit = m.laborHrs || (m.totalLabor / m.qty);
+                            return sum + (m.installed * laborPerUnit);
+                        }, 0);
+                        const actualLabor = module.materials.reduce((sum, m) => sum + (m.laborUsed || 0), 0);
+                        const isBeating = actualLabor <= adjustedLaborBudget || adjustedLaborBudget === 0;
+                        const variance = adjustedLaborBudget - actualLabor;
+
+                        return (
+                            <div className="flex items-center justify-between p-3 bg-slate-800/30 rounded-lg">
+                                <span className="text-white font-medium">Labor Hours</span>
+                                <div className="flex items-center gap-6">
+                                    <div className="text-center">
+                                        <p className="text-xs text-slate-500">Total Budget</p>
+                                        <span className="text-cyan-400 font-medium">{totalLabor.toFixed(1)}h</span>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-slate-500">For Installed</p>
+                                        <span className="text-slate-300 font-medium">{adjustedLaborBudget.toFixed(1)}h</span>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-slate-500">Actual</p>
+                                        <span className={`font-bold ${isBeating ? 'text-emerald-400' : 'text-red-400'}`}>{actualLabor.toFixed(1)}h</span>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-slate-500">Variance</p>
+                                        <span className={`font-medium ${variance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {variance >= 0 ? '+' : ''}{variance.toFixed(1)}h
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Daily Logs */}
                     <div className="space-y-2">
