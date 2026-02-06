@@ -194,9 +194,22 @@ async function callGeminiAPI(prompt, filePart, temperature = 0.1) {
  * Handles markdown code blocks, malformed JSON, and common issues
  */
 function extractJSON(text) {
-    // Strategy 1: Extract from markdown code blocks
-    const jsonBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    let jsonStr = jsonBlockMatch ? jsonBlockMatch[1] : text;
+    console.log('[AI] Extracting JSON from response, length:', text.length);
+
+    // Strategy 1: Remove markdown code block wrappers directly
+    let jsonStr = text
+        .replace(/^```json\s*/i, '')      // Remove opening ```json
+        .replace(/^```\s*/i, '')          // Remove opening ```
+        .replace(/\s*```$/i, '')          // Remove closing ```
+        .trim();
+
+    // If that didn't work, try regex extraction
+    if (jsonStr.startsWith('`')) {
+        const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (match) {
+            jsonStr = match[1].trim();
+        }
+    }
 
     // Strategy 2: Find JSON object/array boundaries
     const firstBrace = jsonStr.indexOf('{');
@@ -204,18 +217,28 @@ function extractJSON(text) {
     const startIdx = firstBrace >= 0 && (firstBracket < 0 || firstBrace < firstBracket) ? firstBrace : firstBracket;
 
     if (startIdx >= 0) {
-        const isObject = jsonStr[startIdx] === '{';
-        const endChar = isObject ? '}' : ']';
         let depth = 0;
         let endIdx = -1;
+        let inString = false;
+        let prevChar = '';
 
         for (let i = startIdx; i < jsonStr.length; i++) {
-            if (jsonStr[i] === '{' || jsonStr[i] === '[') depth++;
-            if (jsonStr[i] === '}' || jsonStr[i] === ']') depth--;
-            if (depth === 0) {
-                endIdx = i;
-                break;
+            const char = jsonStr[i];
+
+            // Track string boundaries (ignore braces inside strings)
+            if (char === '"' && prevChar !== '\\') {
+                inString = !inString;
             }
+
+            if (!inString) {
+                if (char === '{' || char === '[') depth++;
+                if (char === '}' || char === ']') depth--;
+                if (depth === 0) {
+                    endIdx = i;
+                    break;
+                }
+            }
+            prevChar = char;
         }
 
         if (endIdx > startIdx) {
@@ -227,22 +250,49 @@ function extractJSON(text) {
     jsonStr = jsonStr
         .replace(/,\s*}/g, '}')           // Remove trailing commas in objects
         .replace(/,\s*\]/g, ']')          // Remove trailing commas in arrays
-        .replace(/'/g, '"')               // Single quotes to double quotes
-        .replace(/(\w+):/g, '"$1":')      // Unquoted keys (simple cases)
-        .replace(/""+/g, '"')             // Fix double quotes
-        .replace(/\n/g, ' ')              // Remove newlines
+        .replace(/\r\n/g, '\n')           // Normalize line endings
+        .replace(/\t/g, ' ')              // Replace tabs with spaces
         .trim();
 
     try {
-        return JSON.parse(jsonStr);
+        const result = JSON.parse(jsonStr);
+        console.log('[AI] JSON parsed successfully');
+        return result;
     } catch (e1) {
         console.warn('[AI] JSON parse attempt 1 failed:', e1.message);
-        console.log('[AI] Raw text:', text.substring(0, 500));
+        console.log('[AI] Attempting cleanup, first 300 chars:', jsonStr.substring(0, 300));
 
-        // Strategy 4: Try to extract just device counts manually
+        // Strategy 4: More aggressive cleanup
+        try {
+            const cleanedJson = jsonStr
+                .replace(/[\x00-\x1F\x7F]/g, ' ')  // Remove control characters
+                .replace(/\s+/g, ' ')              // Collapse whitespace
+                .replace(/,\s*([}\]])/g, '$1')     // Remove trailing commas again
+                .replace(/([{,])\s*(\w+)\s*:/g, '$1"$2":') // Quote unquoted keys
+                .replace(/:\s*'([^']*)'/g, ':"$1"');      // Single to double quotes in values
+
+            const result = JSON.parse(cleanedJson);
+            console.log('[AI] JSON parsed after cleanup');
+            return result;
+        } catch (e2) {
+            console.warn('[AI] JSON parse attempt 2 failed:', e2.message);
+        }
+
+        // Strategy 5: Try to extract just device counts manually from the text
+        console.log('[AI] Attempting regex extraction of counts...');
         const deviceCounts = {};
-        const countMatches = text.matchAll(/"?(\w+[\s\w]*)"?\s*[:=]\s*(\d+)/g);
-        for (const match of countMatches) {
+        const summaryMatch = text.match(/"summary"\s*:\s*\{([^}]+)\}/);
+
+        if (summaryMatch) {
+            const countMatches = summaryMatch[1].matchAll(/"([^"]+)"\s*:\s*(\d+)/g);
+            for (const match of countMatches) {
+                deviceCounts[match[1]] = parseInt(match[2]);
+            }
+        }
+
+        // Also try general pattern
+        const generalMatches = text.matchAll(/"(Data Outlet|Voice Outlet|WAP|Smoke Detector|Card Reader|Dome Camera|Horn.?Strobe|Pull Station|REX|Door Contact)"\s*:\s*(\d+)/gi);
+        for (const match of generalMatches) {
             const key = match[1].trim();
             const value = parseInt(match[2]);
             if (!isNaN(value) && value > 0 && value < 10000) {
@@ -252,12 +302,12 @@ function extractJSON(text) {
 
         if (Object.keys(deviceCounts).length > 0) {
             console.log('[AI] Extracted counts via regex:', deviceCounts);
-            return { devices: deviceCounts, symbols: [], summary: deviceCounts };
+            return { devices: [], symbols: [], summary: { EXTRACTED: deviceCounts }, notes: 'Counts extracted via fallback' };
         }
 
         // Return empty result rather than throwing
         console.error('[AI] Could not parse response, returning empty result');
-        return { devices: {}, symbols: [], summary: {} };
+        return { devices: [], symbols: [], summary: {}, codeCompliance: { status: 'UNKNOWN', violations: [], notes: 'Analysis failed - manual review required' } };
     }
 }
 
