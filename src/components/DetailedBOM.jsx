@@ -652,7 +652,7 @@ export default function DetailedBOM({ results, canEdit = true, laborRates = null
                     </p>
                 ) : (
                     <p className="text-sm text-amber-400">
-                        🔒 View Only Mode - Estimator access required to edit
+                        🔒 View Only Mode - Op's MGR access required to edit
                     </p>
                 )}
             </div>

@@ -1596,8 +1596,8 @@ export default function LVTakeoffSystem() {
               <div className="flex items-center gap-1 p-1 bg-black-medium rounded-xl border border-gold/30 w-fit">
                 <span className="px-3 py-2 text-sm text-gold/60">Role:</span>
                 {[
-                  { id: 'estimator', label: 'Estimator', requiresPassword: true },
-                  { id: 'pm', label: 'Project Manager', requiresPassword: true },
+                  { id: 'estimator', label: "Op's MGR", requiresPassword: true },
+                  { id: 'pm', label: 'PM/Lead', requiresPassword: true },
                   { id: 'viewer', label: 'Viewer', requiresPassword: false }
                 ].map(role => (
                   <button
@@ -1627,7 +1627,7 @@ export default function LVTakeoffSystem() {
               <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
                 <div className="bg-black-medium rounded-2xl border border-gold/50 p-6 max-w-sm w-full mx-4">
                   <h3 className="text-lg font-bold text-gold mb-4">
-                    Enter {showPasswordModal === 'estimator' ? 'Estimator' : 'PM'} Password
+                    Enter {showPasswordModal === 'estimator' ? "Op's MGR" : 'PM/Lead'} Password
                   </h3>
                   <input
                     type="password"

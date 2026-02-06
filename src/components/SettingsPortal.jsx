@@ -373,7 +373,7 @@ export default function SettingsPortal({ settings, onSettingsChange, passwords, 
             {/* Password Management */}
             <SettingCard title="Password Management" icon={Shield} color="red">
                 <div className="flex items-center justify-between py-3 border-b border-slate-800/30">
-                    <label className="text-white font-medium">Estimator Password</label>
+                    <label className="text-white font-medium">Op's MGR Password</label>
                     <input
                         type="text"
                         value={localPasswords.estimator}
@@ -382,7 +382,7 @@ export default function SettingsPortal({ settings, onSettingsChange, passwords, 
                     />
                 </div>
                 <div className="flex items-center justify-between py-3">
-                    <label className="text-white font-medium">PM Password</label>
+                    <label className="text-white font-medium">PM/Lead Password</label>
                     <input
                         type="text"
                         value={localPasswords.pm}

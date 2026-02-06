@@ -523,7 +523,7 @@ function PasswordSettings({ passwords, onSave, onClose }) {
                 </div>
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm text-slate-400 mb-1">Estimator Password</label>
+                        <label className="block text-sm text-slate-400 mb-1">Op's MGR Password</label>
                         <input
                             type="text"
                             value={estimatorPw}
@@ -532,7 +532,7 @@ function PasswordSettings({ passwords, onSave, onClose }) {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm text-slate-400 mb-1">PM Password</label>
+                        <label className="block text-sm text-slate-400 mb-1">PM/Lead Password</label>
                         <input
                             type="text"
                             value={pmPw}
