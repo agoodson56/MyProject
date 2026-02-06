@@ -119,7 +119,7 @@ async function fileToBase64(file) {
  */
 async function prepareFileForGemini(file) {
     const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    
+
     if (isPDF) {
         try {
             const uploadedFile = await uploadToGemini(file);
@@ -197,12 +197,38 @@ async function callGeminiAPI(prompt, filePart, temperature = 0.1) {
 // PASS 1: LEGEND EXTRACTION
 // ============================================================================
 
-const LEGEND_EXTRACTION_PROMPT = `You are an expert low-voltage construction estimator. Your task is to find and extract the SYMBOL LEGEND from this construction drawing.
+const LEGEND_EXTRACTION_PROMPT = `You are an expert low-voltage construction estimator. Your task is to:
+1. CLASSIFY this sheet type
+2. Find and extract the SYMBOL LEGEND if present
 
-FOCUS AREAS:
-1. Look for a "LEGEND", "SYMBOL LEGEND", "SYMBOL KEY", or "SYMBOLS" box on the drawing
-2. This is typically in a corner of the sheet or on a separate legend sheet
-3. It shows symbols with their descriptions
+STEP 1 - CLASSIFY SHEET TYPE:
+Determine what type of sheet this is:
+
+A) "FLOOR_PLAN" - Shows actual room layouts with walls, doors, spaces where devices are installed
+   - Has room boundaries and walls
+   - Shows multiple device symbols placed IN actual locations
+   - May have a small legend in a corner
+   - THIS IS WHERE WE COUNT DEVICES
+
+B) "LEGEND_SHEET" - Dedicated symbol reference sheet (DO NOT COUNT DEVICES HERE)
+   - Primary purpose is to show what each symbol means
+   - Title includes: "Legend", "Symbol Schedule", "Symbol Key", "Device Schedule"
+   - Shows symbols with descriptions/labels next to them
+   - Used as REFERENCE ONLY - symbols here are examples, not installed devices
+
+C) "SCHEDULE_SHEET" - Equipment tables/lists (DO NOT COUNT DEVICES HERE)
+   - Shows tables with quantities, model numbers, specifications
+   - Riser diagrams, panel schedules, equipment lists
+   - Already contains counts - do not re-count
+
+D) "TITLE_SHEET" - Cover sheet with project info (NO DEVICES)
+
+E) "DETAIL_SHEET" - Close-up installation details (DO NOT COUNT)
+   - Shows how to install/wire specific devices
+   - Enlarged views, mounting details, wiring diagrams
+
+STEP 2 - EXTRACT LEGEND (if visible):
+Look for a "LEGEND", "SYMBOL LEGEND", "SYMBOL KEY", or "SYMBOLS" box
 
 EXTRACT ALL SYMBOLS for these systems:
 - STRUCTURED CABLING: Data outlets, voice outlets, fiber, WAP/wireless access points
@@ -214,6 +240,10 @@ EXTRACT ALL SYMBOLS for these systems:
 
 OUTPUT FORMAT (JSON):
 {
+    "sheetType": "FLOOR_PLAN",
+    "sheetName": "E1.01 - First Floor Plan",
+    "shouldCountDevices": true,
+    "sheetTypeReason": "Shows room layouts with device symbols placed in actual locations",
     "legendFound": true,
     "legendLocation": "bottom-right corner",
     "symbols": [
@@ -222,22 +252,21 @@ OUTPUT FORMAT (JSON):
             "description": "Data Outlet",
             "system": "CABLING",
             "visualDescription": "Small circle with letter D inside"
-        },
-        {
-            "symbol": "Triangle",
-            "description": "Dome Camera",
-            "system": "CCTV",
-            "visualDescription": "Solid triangle pointing up"
         }
     ],
-    "notes": "Legend shows 12 symbol types total"
+    "notes": "Floor plan sheet with 12 symbol types in corner legend"
 }
 
-If NO LEGEND is found, return:
+For LEGEND_SHEET or SCHEDULE_SHEET, return shouldCountDevices: false:
 {
-    "legendFound": false,
-    "symbols": [],
-    "notes": "No legend found on this sheet - will use standard industry symbols"
+    "sheetType": "LEGEND_SHEET",
+    "sheetName": "E0.01 - Symbol Legend",
+    "shouldCountDevices": false,
+    "sheetTypeReason": "Dedicated symbol reference sheet - symbols shown are examples for identification only",
+    "legendFound": true,
+    "legendLocation": "full sheet",
+    "symbols": [...],
+    "notes": "Legend/schedule sheet - USE FOR REFERENCE ONLY, do not count devices"
 }`;
 
 async function extractLegend(filePart) {
@@ -269,6 +298,12 @@ CRITICAL COUNTING RULES:
 3. Count EVERY symbol, even if partially obscured or overlapping
 4. When in doubt, COUNT IT - it's better to overcount than undercount
 5. For repeating units (apartments, hotel rooms), count EACH UNIT separately
+
+⚠️ IMPORTANT - DO NOT COUNT SYMBOLS IN THESE AREAS:
+- The LEGEND BOX (usually in a corner) - these are reference symbols, not installed devices
+- Title blocks, notes sections, or detail callouts
+- Only count symbols that are placed IN ACTUAL ROOM LOCATIONS on the floor plan
+- If a room appears in multiple places (like a typical room detail), only count it once unless clearly showing different rooms
 ${symbolDescriptions}
 
 SYSTEMS TO COUNT:
@@ -308,6 +343,20 @@ COUNT EVERY SINGLE SYMBOL. Do not skip any zones.`;
 
 async function gridBasedCount(filePart, legendInfo) {
     console.log('[AI] Pass 2: Grid-based systematic counting...');
+
+    // Skip counting on legend/schedule sheets - use them for reference only
+    if (legendInfo.shouldCountDevices === false) {
+        console.log(`[AI] Pass 2: SKIPPING count on ${legendInfo.sheetType} sheet "${legendInfo.sheetName}" - reference only`);
+        return {
+            gridCounts: {},
+            totalsBySystem: {},
+            confidence: 1.0,
+            countingNotes: `Skipped counting - ${legendInfo.sheetType} used for symbol reference only`,
+            skippedSheet: true,
+            sheetType: legendInfo.sheetType
+        };
+    }
+
     try {
         const prompt = buildGridCountingPrompt(legendInfo);
         const result = await callGeminiAPI(prompt, filePart);
@@ -324,10 +373,10 @@ async function gridBasedCount(filePart, legendInfo) {
 // ============================================================================
 
 function buildValidationPrompt(gridCounts, legendInfo) {
-    const gridSummary = gridCounts.totalsBySystem 
+    const gridSummary = gridCounts.totalsBySystem
         ? `\n\nPREVIOUS COUNT (to validate):\n${JSON.stringify(gridCounts.totalsBySystem, null, 2)}`
         : '';
-    
+
     const symbolDescriptions = legendInfo.legendFound && legendInfo.symbols?.length > 0
         ? `\n\nKNOWN SYMBOLS FROM LEGEND:\n${legendInfo.symbols.map(s => `- ${s.description}: ${s.visualDescription}`).join('\n')}`
         : '';
@@ -423,23 +472,23 @@ async function fullSheetValidation(filePart, gridCounts, legendInfo) {
 
 function reconcileResults(legendInfo, gridCounts, validationResult) {
     const discrepancies = [];
-    
+
     // Compare grid counts vs validation counts
     const gridTotals = gridCounts.totalsBySystem || {};
     const validationTotals = validationResult.summary || {};
-    
+
     for (const system of Object.keys({ ...gridTotals, ...validationTotals })) {
         const gridDevices = gridTotals[system] || {};
         const validDevices = validationTotals[system] || {};
-        
+
         for (const deviceType of Object.keys({ ...gridDevices, ...validDevices })) {
             const gridCount = gridDevices[deviceType] || 0;
             const validCount = validDevices[deviceType] || 0;
-            
+
             if (gridCount !== validCount) {
                 const diff = Math.abs(gridCount - validCount);
                 const pctDiff = gridCount > 0 ? (diff / gridCount * 100) : 100;
-                
+
                 discrepancies.push({
                     system,
                     deviceType,
@@ -453,7 +502,7 @@ function reconcileResults(legendInfo, gridCounts, validationResult) {
             }
         }
     }
-    
+
     // Use validation results as final (more detailed with bounding boxes)
     // but incorporate discrepancy warnings
     return {
@@ -484,25 +533,25 @@ export async function analyzeFloorPlan(file, legendInfo = null) {
 
     console.log(`[AI] Starting 3-Pass Multi-Pass Analysis for: ${file.name}`);
     const startTime = Date.now();
-    
+
     // Prepare file once, reuse for all passes
     const filePart = await prepareFileForGemini(file);
-    
+
     // PASS 1: Extract legend
     const extractedLegend = legendInfo || await extractLegend(filePart);
-    
+
     // PASS 2: Grid-based systematic counting
     const gridCounts = await gridBasedCount(filePart, extractedLegend);
-    
+
     // PASS 3: Full validation with bounding boxes
     const validationResult = await fullSheetValidation(filePart, gridCounts, extractedLegend);
-    
+
     // Reconcile all results
     const finalResult = reconcileResults(extractedLegend, gridCounts, validationResult);
-    
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[AI] Multi-Pass Analysis Complete in ${elapsed}s - ${finalResult.devices?.length || 0} devices detected`);
-    
+
     return finalResult;
 }
 
@@ -516,9 +565,9 @@ export async function analyzeFloorPlanQuick(file) {
 
     console.log(`[AI] Quick Analysis for: ${file.name}`);
     const filePart = await prepareFileForGemini(file);
-    
+
     const quickPrompt = `Quickly count all low-voltage device symbols on this floor plan. Group by system (CABLING, ACCESS, CCTV, FIRE, INTERCOM). Return JSON: { "summary": { "CABLING": {"Data Outlet": 10}, "FIRE": {"Smoke Detector": 5} }, "totalDevices": 15, "confidence": 0.85 }`;
-    
+
     return await callGeminiAPI(quickPrompt, filePart, 0.2);
 }
 
@@ -565,9 +614,9 @@ export async function analyzeAllSheets(planFiles, onProgress) {
                         allResults.totalsBySystem[system] = {};
                     }
                     for (const [deviceType, count] of Object.entries(devices)) {
-                        allResults.totalsBySystem[system][deviceType] = 
+                        allResults.totalsBySystem[system][deviceType] =
                             (allResults.totalsBySystem[system][deviceType] || 0) + count;
-                        
+
                         // Also track in aggregatedDevices for compatibility
                         const key = `${system}:${deviceType}`;
                         if (!allResults.aggregatedDevices[key]) {
@@ -594,7 +643,7 @@ export async function analyzeAllSheets(planFiles, onProgress) {
                     sheet: file.name
                 })));
             }
-            
+
             // Collect discrepancies
             if (result.discrepancies?.length > 0) {
                 allResults.discrepancies.push(...result.discrepancies.map(d => ({
@@ -643,13 +692,13 @@ export function convertToDeviceCounts(aiResults) {
             }
         }
     }
-    
+
     // Fallback to aggregatedDevices
     if (aiResults.aggregatedDevices) {
         for (const [key, deviceData] of Object.entries(aiResults.aggregatedDevices)) {
             const system = deviceData.system || 'CABLING';
             const cleanKey = deviceData.symbol.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
-            
+
             if (deviceCounts[system]) {
                 deviceCounts[system][cleanKey] = {
                     name: deviceData.symbol,
