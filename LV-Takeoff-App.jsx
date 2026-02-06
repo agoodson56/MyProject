@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, FileText, Zap, CheckCircle, AlertTriangle, ChevronRight, X, Download, Eye, Settings, Layers, Cable, Shield, Camera, Flame, Building, Grid3X3, BarChart3, FileSpreadsheet, AlertCircle, Loader2, Plus, Trash2, User, Clock, ClipboardList, FolderOpen, ArrowLeft, Save } from 'lucide-react';
+import { Upload, FileText, Zap, CheckCircle, AlertTriangle, ChevronRight, X, Download, Eye, Settings, Layers, Cable, Shield, Camera, Flame, Building, Grid3X3, BarChart3, FileSpreadsheet, AlertCircle, Loader2, Plus, Trash2, User, Clock, ClipboardList, FolderOpen, ArrowLeft, Save, Lock, Unlock, KeyRound } from 'lucide-react';
 import DetailedBOM, { generateDetailedBOM } from './src/components/DetailedBOM.jsx';
 import ProjectManagerPortal from './src/components/ProjectManagerPortal.jsx';
 import SettingsPortal, { DEFAULT_SETTINGS } from './src/components/SettingsPortal.jsx';
@@ -1110,15 +1110,32 @@ export default function LVTakeoffSystem() {
 
   // Open existing project from dashboard
   const openProject = async (project) => {
+    console.log('📂 Opening project:', project.job_number);
     try {
       const fullProject = await getProject(project.job_number);
+      console.log('📦 Full project data:', fullProject);
       if (fullProject) {
         setActiveProject(fullProject);
-        setProjectName(fullProject.project_name);
-        if (fullProject.device_counts) setResults({ deviceCounts: fullProject.device_counts, issues: fullProject.issues || [] });
+        setProjectName(fullProject.project_name || 'Untitled Project');
+        if (fullProject.device_counts) {
+          setResults({ deviceCounts: fullProject.device_counts, issues: fullProject.issues || [] });
+        } else {
+          setResults(null); // Clear results if no device counts
+        }
         if (fullProject.settings) setProjectSettings(fullProject.settings);
+
+        // Load per-project passwords and default to viewer (read-only)
+        setPasswords({
+          pm: fullProject.pm_password || 'PM1234',
+          ops: fullProject.ops_password || 'OPS1234'
+        });
+        setUserRole('viewer'); // Always start in view-only mode
+
         setShowDashboard(false);
         setCurrentStep(fullProject.device_counts ? 3 : 0); // Go to results if data exists
+        console.log('✅ Project loaded in VIEW-ONLY mode');
+      } else {
+        alert('Project not found');
       }
     } catch (err) {
       console.error('Failed to open project:', err);
@@ -1273,6 +1290,35 @@ export default function LVTakeoffSystem() {
               })}
             </div>
 
+            {/* Edit Mode Button */}
+            {activeProject && (
+              <div className="flex items-center gap-3">
+                {userRole === 'viewer' ? (
+                  <button
+                    onClick={() => setShowPasswordModal('edit')}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 border border-amber-500/50 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-all"
+                    title="Click to enter edit mode"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span className="text-sm font-medium">View Only</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 rounded-lg">
+                    <Unlock className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      {userRole === 'ops' ? 'Ops Manager' : 'PM Access'}
+                    </span>
+                    <button
+                      onClick={() => setUserRole('viewer')}
+                      className="ml-2 p-1 hover:bg-emerald-500/30 rounded"
+                      title="Exit edit mode"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
         </div>
@@ -1720,7 +1766,7 @@ export default function LVTakeoffSystem() {
                           </tr>
                         </thead>
                         <tbody>
-                          {results.closets.map((closet, idx) => {
+                          {(results.closets || []).map((closet, idx) => {
                             const typeColors = {
                               'MDF': 'bg-cyan-500/20 text-cyan-400',
                               'IDF': 'bg-slate-700 text-slate-300',
@@ -2211,6 +2257,102 @@ export default function LVTakeoffSystem() {
           onAnalyze={() => planFiles[0] && analyzeFloorPlanForMarking(planFiles[0])}
           pdfFile={planFiles[0]?.type === 'application/pdf' ? planFiles[0] : null}
         />
+      )}
+
+      {/* Password Modal for Edit Access */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-2xl border border-gold/30 p-6 w-full max-w-md">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-gold/20 rounded-xl">
+                <KeyRound className="w-6 h-6 text-gold" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Enter Edit Password</h2>
+                <p className="text-sm text-slate-400">Unlock editing capabilities</p>
+              </div>
+            </div>
+
+            {passwordError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg mb-4 text-red-400 text-sm">
+                {passwordError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Password</label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      // Verify password
+                      if (passwordInput === passwords.ops) {
+                        setUserRole('ops');
+                        setShowPasswordModal(null);
+                        setPasswordInput('');
+                        setPasswordError('');
+                      } else if (passwordInput === passwords.pm) {
+                        setUserRole('pm');
+                        setShowPasswordModal(null);
+                        setPasswordInput('');
+                        setPasswordError('');
+                      } else {
+                        setPasswordError('Incorrect password');
+                      }
+                    }
+                  }}
+                  placeholder="Enter PM or Ops Manager password"
+                  className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold/50 text-white"
+                  autoFocus
+                />
+              </div>
+
+              <div className="text-xs text-slate-500 p-3 bg-slate-800/50 rounded-lg">
+                <p className="font-medium text-slate-400 mb-1">Access Levels:</p>
+                <p>• <span className="text-cyan-400">PM Password</span> - Edit installed qty, labor hours, daily logs</p>
+                <p>• <span className="text-amber-400">Ops Password</span> - Full access including password changes</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowPasswordModal(null);
+                  setPasswordInput('');
+                  setPasswordError('');
+                }}
+                className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  // Verify password
+                  if (passwordInput === passwords.ops) {
+                    setUserRole('ops');
+                    setShowPasswordModal(null);
+                    setPasswordInput('');
+                    setPasswordError('');
+                  } else if (passwordInput === passwords.pm) {
+                    setUserRole('pm');
+                    setShowPasswordModal(null);
+                    setPasswordInput('');
+                    setPasswordError('');
+                  } else {
+                    setPasswordError('Incorrect password');
+                  }
+                }}
+                className="flex items-center gap-2 px-5 py-2 bg-gold text-black font-medium rounded-lg hover:bg-gold/90 transition-colors"
+              >
+                <Unlock className="w-4 h-4" />
+                Unlock
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

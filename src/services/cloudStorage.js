@@ -176,6 +176,16 @@ function getProjectLocal(jobNumber) {
     return Promise.resolve(project || null);
 }
 
+// Generate a random 6-character password
+function generatePassword() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoiding confusing chars like 0/O, 1/I
+    let password = '';
+    for (let i = 0; i < 6; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+}
+
 function createProjectLocal(data) {
     const projects = getStoredProjects();
     if (projects.some(p => p.job_number === data.job_number)) {
@@ -186,6 +196,8 @@ function createProjectLocal(data) {
     const newProject = {
         id: Date.now().toString(36) + Math.random().toString(36).substr(2),
         ...data,
+        pm_password: data.pm_password || generatePassword(),
+        ops_password: data.ops_password || generatePassword(),
         created_at: now,
         updated_at: now,
         status: 'active'

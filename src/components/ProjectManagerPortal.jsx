@@ -283,13 +283,14 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-white border-b border-slate-800">
-                                    <th className="text-left pb-2 font-medium">Item</th>
-                                    <th className="text-right pb-2 font-medium">Required</th>
-                                    <th className="text-right pb-2 font-medium">Installed</th>
-                                    <th className="text-right pb-2 font-medium">Labor Budget</th>
-                                    <th className="text-right pb-2 font-medium">Labor Used</th>
-                                    <th className="text-right pb-2 font-medium">Remaining</th>
-                                    <th className="text-right pb-2 font-medium">Progress</th>
+                                    <th className="text-left pb-2 font-medium w-1/4">Item</th>
+                                    <th className="text-center pb-2 font-medium w-20">Required</th>
+                                    <th className="text-center pb-2 font-medium w-20">Installed</th>
+                                    <th className="text-center pb-2 font-medium w-24">Budget (Total)</th>
+                                    <th className="text-center pb-2 font-medium w-24">Budget (Adj)</th>
+                                    <th className="text-center pb-2 font-medium w-20">Actual</th>
+                                    <th className="text-center pb-2 font-medium w-16">Remain</th>
+                                    <th className="text-center pb-2 font-medium w-20">Progress</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -300,8 +301,8 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                                     return (
                                         <tr key={i} className="border-b border-slate-800/30">
                                             <td className="py-2">{m.item}</td>
-                                            <td className="py-2 text-right text-white">{m.qty} {m.unit}</td>
-                                            <td className="py-2 text-right">
+                                            <td className="py-2 text-center text-white">{m.qty} {m.unit}</td>
+                                            <td className="py-2 text-center">
                                                 {canEdit ? (
                                                     <EditableCell
                                                         value={m.installed}
@@ -313,8 +314,12 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                                                     <span className="text-emerald-400">{m.installed} {m.unit}</span>
                                                 )}
                                             </td>
-                                            <td className="py-2 text-right">
-                                                {/* Show adjusted labor budget based on installed qty */}
+                                            {/* Budget (Total) - original BOM labor hours */}
+                                            <td className="py-2 text-center text-cyan-400">
+                                                {m.totalLabor.toFixed(1)}h
+                                            </td>
+                                            {/* Budget (Adjusted) - based on installed qty */}
+                                            <td className="py-2 text-center">
                                                 {(() => {
                                                     const laborPerUnit = m.laborHrs || (m.totalLabor / m.qty);
                                                     const adjustedBudget = m.adjustedLaborBudget || (m.installed * laborPerUnit);
@@ -322,15 +327,14 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                                                     const isOverBudget = laborUsed > adjustedBudget && adjustedBudget > 0;
                                                     const isAtBudget = laborUsed === adjustedBudget && adjustedBudget > 0;
                                                     return (
-                                                        <span className={`font-medium ${isOverBudget ? 'text-red-400' : isAtBudget ? 'text-amber-400' : 'text-slate-400'}`}>
+                                                        <span className={`font-medium ${isOverBudget ? 'text-red-400' : isAtBudget ? 'text-amber-400' : 'text-slate-300'}`}>
                                                             {adjustedBudget.toFixed(1)}h
-                                                            {m.installed > 0 && <span className="text-xs text-slate-600 ml-1">({m.installed} installed)</span>}
                                                         </span>
                                                     );
                                                 })()}
                                             </td>
-                                            <td className="py-2 text-right">
-                                                {/* Actual hours - green if beating budget, red if not */}
+                                            {/* Actual hours used */}
+                                            <td className="py-2 text-center">
                                                 {(() => {
                                                     const laborPerUnit = m.laborHrs || (m.totalLabor / m.qty);
                                                     const adjustedBudget = m.installed * laborPerUnit;
@@ -355,9 +359,9 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                                                     );
                                                 })()}
                                             </td>
-                                            <td className="py-2 text-right text-amber-400">{remaining} {m.unit}</td>
-                                            <td className="py-2 text-right">
-                                                <div className="w-20 ml-auto">
+                                            <td className="py-2 text-center text-amber-400">{remaining} {m.unit}</td>
+                                            <td className="py-2 text-center">
+                                                <div className="w-16 mx-auto">
                                                     <ProgressBar value={m.installed} max={m.qty} color={pct >= 100 ? 'emerald' : 'cyan'} />
                                                 </div>
                                             </td>
