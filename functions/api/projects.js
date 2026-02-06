@@ -23,6 +23,17 @@ export async function onRequestGet(context) {
     const jobNumber = url.searchParams.get('job_number');
     const search = url.searchParams.get('search');
 
+    // Debug: Check if D1 binding exists
+    if (!env.DB) {
+        return new Response(JSON.stringify({
+            error: 'D1 database not bound. Check Cloudflare Pages bindings.',
+            env_keys: Object.keys(env)
+        }), {
+            status: 500,
+            headers: corsHeaders()
+        });
+    }
+
     try {
         let results;
 
@@ -72,7 +83,11 @@ export async function onRequestGet(context) {
             headers: corsHeaders()
         });
     } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+        return new Response(JSON.stringify({
+            error: error.message,
+            stack: error.stack,
+            type: 'database_error'
+        }), {
             status: 500,
             headers: corsHeaders()
         });
