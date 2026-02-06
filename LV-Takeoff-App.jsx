@@ -25,8 +25,10 @@ export default function LVTakeoffSystem() {
   const [detectedSymbols, setDetectedSymbols] = useState([]);
   const [confirmedSymbols, setConfirmedSymbols] = useState([]);
   const [projectSettings, setProjectSettings] = useState(DEFAULT_SETTINGS);
-  const [userRole, setUserRole] = useState('viewer'); // 'estimator', 'pm', 'ops', 'viewer'
-  const [passwords, setPasswords] = useState({ estimator: 'Estimator2026!', pm: 'Manager2026!', ops: 'OpsManager2026!' });
+  const [userRole, setUserRole] = useState('viewer'); // 'estimator', 'pm', 'viewer'
+  // Op's MGR password is hardcoded and same for ALL projects
+  const OPS_MGR_PASSWORD = '35C0S1991';
+  const [passwords, setPasswords] = useState({ estimator: OPS_MGR_PASSWORD, pm: 'PM1234' });
   const [showPasswordModal, setShowPasswordModal] = useState(null); // null or role name
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -1128,17 +1130,16 @@ export default function LVTakeoffSystem() {
         }
         if (fullProject.settings) setProjectSettings(fullProject.settings);
 
-        // Load per-project passwords and default to viewer (read-only)
-        // Database has pm_password and ops_password, map ops to estimator role
+        // Load per-project PM password only - Op's MGR password is global/hardcoded
         setPasswords({
-          pm: fullProject.pm_password || 'PM1234',
-          estimator: fullProject.ops_password || 'OPS1234'
+          estimator: OPS_MGR_PASSWORD, // Always use hardcoded Op's MGR password
+          pm: fullProject.pm_password || 'PM1234' // PM/Lead password is per-project
         });
         setUserRole('viewer'); // Always start in view-only mode
 
         setShowDashboard(false);
         setCurrentStep(fullProject.device_counts ? 3 : 0); // Go to results if data exists
-        console.log('✅ Project loaded in VIEW-ONLY mode. PM Password:', fullProject.pm_password, 'OPS Password:', fullProject.ops_password);
+        console.log('✅ Project loaded in VIEW-ONLY mode. PM Password:', fullProject.pm_password);
       } else {
         alert('Project not found');
       }

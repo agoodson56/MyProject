@@ -371,18 +371,21 @@ export default function SettingsPortal({ settings, onSettingsChange, passwords, 
             </div>
 
             {/* Password Management */}
-            <SettingCard title="Password Management" icon={Shield} color="red">
+            <SettingCard title="Project Passwords" icon={Shield} color="red">
                 <div className="flex items-center justify-between py-3 border-b border-slate-800/30">
-                    <label className="text-white font-medium">Op's MGR Password</label>
-                    <input
-                        type="text"
-                        value={localPasswords.estimator}
-                        onChange={(e) => setLocalPasswords(prev => ({ ...prev, estimator: e.target.value }))}
-                        className="w-40 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
-                    />
+                    <div>
+                        <label className="text-white font-medium">Op's MGR Password</label>
+                        <p className="text-xs text-slate-500">Same for all projects</p>
+                    </div>
+                    <span className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-400 font-mono">
+                        ••••••••••
+                    </span>
                 </div>
                 <div className="flex items-center justify-between py-3">
-                    <label className="text-white font-medium">PM/Lead Password</label>
+                    <div>
+                        <label className="text-white font-medium">PM/Lead Password</label>
+                        <p className="text-xs text-slate-500">Set by Op's MGR for this project</p>
+                    </div>
                     <input
                         type="text"
                         value={localPasswords.pm}
@@ -391,7 +394,7 @@ export default function SettingsPortal({ settings, onSettingsChange, passwords, 
                     />
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                    Default password: Admin123 • Click "Save Settings" to apply changes
+                    Op's MGR can assign the PM/Lead password for each project • Click "Save Settings" to apply
                 </p>
             </SettingCard>
 

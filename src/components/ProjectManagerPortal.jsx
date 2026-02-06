@@ -499,13 +499,12 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
     );
 }
 
-// Password Settings Modal
+// Password Settings Modal - Op's MGR can only assign PM/Lead password
 function PasswordSettings({ passwords, onSave, onClose }) {
-    const [estimatorPw, setEstimatorPw] = useState(passwords.estimator);
     const [pmPw, setPmPw] = useState(passwords.pm);
 
     const handleSave = () => {
-        onSave({ estimator: estimatorPw, pm: pmPw });
+        onSave({ estimator: passwords.estimator, pm: pmPw }); // Keep estimator unchanged
         onClose();
     };
 
@@ -515,21 +514,19 @@ function PasswordSettings({ passwords, onSave, onClose }) {
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold flex items-center gap-2">
                         <Lock className="w-5 h-5 text-amber-400" />
-                        Password Settings
+                        Assign PM/Lead Password
                     </h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-white">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
                 <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm text-slate-400 mb-1">Op's MGR Password</label>
-                        <input
-                            type="text"
-                            value={estimatorPw}
-                            onChange={(e) => setEstimatorPw(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                        />
+                    <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-slate-400">Op's MGR Password</span>
+                            <span className="text-slate-500 font-mono">•••••••••• (fixed)</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">Same for all projects - cannot be changed here</p>
                     </div>
                     <div>
                         <label className="block text-sm text-slate-400 mb-1">PM/Lead Password</label>
@@ -538,7 +535,9 @@ function PasswordSettings({ passwords, onSave, onClose }) {
                             value={pmPw}
                             onChange={(e) => setPmPw(e.target.value)}
                             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            placeholder="Enter PM/Lead password for this project"
                         />
+                        <p className="text-xs text-slate-500 mt-1">Set a unique password for PM/Lead on this project</p>
                     </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-6">
@@ -549,7 +548,7 @@ function PasswordSettings({ passwords, onSave, onClose }) {
                         onClick={handleSave}
                         className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
                     >
-                        Save Passwords
+                        Save Password
                     </button>
                 </div>
             </div>
