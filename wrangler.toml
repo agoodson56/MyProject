@@ -2,8 +2,8 @@ name = "lv-takeoff-intelligence"
 compatibility_date = "2024-01-01"
 pages_build_output_dir = "dist"
 
-# D1 Database binding - uncomment and add your database ID when ready
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "lv-takeoff-db"
-# database_id = "YOUR_DATABASE_ID_HERE"
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "lv-takeoff-db"
+database_id = "68561732-6021-4653-a378-28f9cbd90bda"
