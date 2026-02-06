@@ -1224,11 +1224,11 @@ export default function LVTakeoffSystem() {
               {/* Back to Dashboard Button */}
               <button
                 onClick={backToDashboard}
-                className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-white rounded-lg transition-all"
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-600/20 border border-cyan-500/50 hover:bg-cyan-600/30 text-cyan-400 hover:text-cyan-300 rounded-lg transition-all"
                 title="Back to Projects"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <FolderOpen className="w-4 h-4" />
+                <span className="text-sm font-medium">Projects</span>
               </button>
 
               <img src="/logo.png" alt="3D Technology Services" style={{ height: '240px', width: 'auto' }} />
