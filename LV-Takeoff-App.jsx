@@ -25,8 +25,8 @@ export default function LVTakeoffSystem() {
   const [detectedSymbols, setDetectedSymbols] = useState([]);
   const [confirmedSymbols, setConfirmedSymbols] = useState([]);
   const [projectSettings, setProjectSettings] = useState(DEFAULT_SETTINGS);
-  const [userRole, setUserRole] = useState('viewer'); // 'estimator', 'pm', 'viewer'
-  const [passwords, setPasswords] = useState({ estimator: 'Estimator2026!', pm: 'Manager2026!' });
+  const [userRole, setUserRole] = useState('viewer'); // 'estimator', 'pm', 'ops', 'viewer'
+  const [passwords, setPasswords] = useState({ estimator: 'Estimator2026!', pm: 'Manager2026!', ops: 'OpsManager2026!' });
   const [showPasswordModal, setShowPasswordModal] = useState(null); // null or role name
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');

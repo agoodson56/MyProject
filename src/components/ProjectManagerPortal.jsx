@@ -283,7 +283,22 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                                                     <span className="text-emerald-400">{m.installed} {m.unit}</span>
                                                 )}
                                             </td>
-                                            <td className="py-2 text-right text-slate-400">{m.totalLabor.toFixed(1)}h</td>
+                                            <td className="py-2 text-right">
+                                                {/* Show adjusted labor budget based on installed qty */}
+                                                {(() => {
+                                                    const laborPerUnit = m.laborHrs || (m.totalLabor / m.qty);
+                                                    const adjustedBudget = m.adjustedLaborBudget || (m.installed * laborPerUnit);
+                                                    const laborUsed = m.laborUsed || 0;
+                                                    const isOverBudget = laborUsed > adjustedBudget && adjustedBudget > 0;
+                                                    const isAtBudget = laborUsed === adjustedBudget && adjustedBudget > 0;
+                                                    return (
+                                                        <span className={`font-medium ${isOverBudget ? 'text-red-400' : isAtBudget ? 'text-amber-400' : 'text-slate-400'}`}>
+                                                            {adjustedBudget.toFixed(1)}h
+                                                            {m.installed > 0 && <span className="text-xs text-slate-600 ml-1">({m.installed} installed)</span>}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </td>
                                             <td className="py-2 text-right">
                                                 {canEdit ? (
                                                     <EditableCell
@@ -543,6 +558,7 @@ export default function ProjectManagerPortal({ bomData, canEdit = true, password
     }, [dailyLogs, isLoaded]);
 
     // Update a specific material's installed qty or laborUsed
+    // Auto-adjusts labor budget based on installed qty
     const handleUpdateMaterial = (moduleId, materialId, field, value) => {
         setModules(prev => prev.map(module => {
             if (module.id === moduleId) {
@@ -550,7 +566,25 @@ export default function ProjectManagerPortal({ bomData, canEdit = true, password
                     ...module,
                     materials: module.materials.map(mat => {
                         if (mat.materialId === materialId) {
-                            return { ...mat, [field]: value };
+                            const updated = { ...mat, [field]: value };
+
+                            // Auto-adjust labor budget when installed qty changes
+                            if (field === 'installed') {
+                                // Calculate labor budget based on installed qty
+                                // Uses the per-unit labor hours (laborHrs) from BOM
+                                const laborPerUnit = mat.laborHrs || (mat.totalLabor / mat.qty);
+                                updated.adjustedLaborBudget = value * laborPerUnit;
+                            }
+
+                            // When labor used is edited, track remaining budget
+                            if (field === 'laborUsed') {
+                                // Recalculate adjusted budget based on current installed qty
+                                const laborPerUnit = mat.laborHrs || (mat.totalLabor / mat.qty);
+                                const installedBudget = (mat.installed || 0) * laborPerUnit;
+                                updated.adjustedLaborBudget = installedBudget;
+                            }
+
+                            return updated;
                         }
                         return mat;
                     })
