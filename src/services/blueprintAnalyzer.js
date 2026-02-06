@@ -501,19 +501,18 @@ function buildValidationPrompt(gridCounts, legendInfo) {
 
     return `You are an expert low-voltage construction estimator AND code compliance specialist performing a FINAL VALIDATION COUNT.
 
-YOUR TASK: Count ALL devices on this floor plan, provide bounding box coordinates, and validate CODE COMPLIANCE.
+YOUR TASK: Count ALL devices on this floor plan and validate CODE COMPLIANCE.
 ${gridSummary}
 ${symbolDescriptions}
 
 VALIDATION RULES:
 1. This is your FINAL validation pass - be extremely thorough
-2. For EACH device found, provide approximate bounding box coordinates
-3. x, y = top-left corner as percentage (0-100) of image width/height
-4. width, height = size as percentage of image dimensions
-5. Assign a confidence score (0.0-1.0) to each detection
-6. Flag any uncertain detections for human review
+2. Count EVERY device symbol on the floor plan
+3. Group counts by system and device type
+4. Check for code compliance issues
+5. Identify telecom closets (MDF/IDF locations)
 
-SYSTEMS TO VALIDATE:
+SYSTEMS TO COUNT:
 - CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP
 - ACCESS: Card Readers, REX Sensors, Door Contacts, Electric Strikes, Mag Locks
 - CCTV: Dome Cameras, Bullet Cameras, PTZ Cameras
@@ -521,114 +520,39 @@ SYSTEMS TO VALIDATE:
 - INTERCOM: Intercom Stations, Speakers
 - A/V: Audio speakers, displays
 
-⚠️ CODE COMPLIANCE VALIDATION (CRITICAL - CHECK ALL OF THESE):
+CODE COMPLIANCE CHECKS (NFPA 72, NEC, TIA-568, ADA, IBC):
+- Smoke detector spacing (30ft max)
+- Pull stations within 5ft of exits
+- Horn/Strobes in all occupiable spaces and restrooms
+- Card readers at 48" max AFF
+- Work areas within 295ft of TR/IDF
 
-NFPA 72 - Fire Alarm:
-- Smoke detector spacing: max 30ft apart or per manufacturer specs
-- Pull stations: Required within 5ft of exit doors, max 200ft travel distance
-- Horn/Strobes: Required in all occupiable spaces, bathrooms, corridors
-- Ceiling mount detectors: Center of room where possible
-- Wall mount strobes: 80-96 inches AFF (Above Finished Floor)
-
-NEC (National Electrical Code):
-- Low voltage pathways separate from power (min 2" separation or barrier)
-- Proper raceway fill (40% max for multiple cables)
-- Firestopping at penetrations
-
-TIA-568/569 - Structured Cabling:
-- Max cable run 295ft (90m horizontal + 10m combined patch)
-- Min 2 work area outlets per work area
-- TR/IDF within 295ft of all work areas
-- Proper cable bend radius
-
-ADA Accessibility:
-- Fire alarm notification appliances: 80-96" AFF
-- Visual notification in all public/common areas
-- Card readers: 48" max mounting height for accessibility
-- Accessible route to all fire alarm pull stations
-
-IBC - International Building Code:
-- Exit signage and emergency lighting coverage
-- Proper egress path coverage for notification
-
-FLAG THESE CODE VIOLATIONS:
-1. "NFPA72_SPACING" - Smoke detectors more than 30ft apart
-2. "NFPA72_PULL_STATION" - Missing pull station near exit
-3. "NFPA72_STROBE" - Missing horn/strobe in occupiable space
-4. "ADA_HEIGHT" - Device mounted outside accessible range
-5. "ADA_CARD_READER" - Card reader above 48" AFF
-6. "TIA_DISTANCE" - Work area potentially over 295ft from TR
-7. "NEC_SEPARATION" - Potential pathway separation issue
-
-OUTPUT FORMAT (JSON):
+OUTPUT FORMAT (JSON) - KEEP RESPONSE COMPACT:
 {
     "sheetName": "T1.01",
-    "devices": [
-        {
-            "id": 1,
-            "system": "CABLING",
-            "type": "Data Outlet",
-            "x": 15.5,
-            "y": 23.2,
-            "width": 2.0,
-            "height": 2.0,
-            "confidence": 0.95,
-            "zone": "topLeft",
-            "notes": "Near door, office area"
-        },
-        {
-            "id": 2,
-            "system": "FIRE",
-            "type": "Smoke Detector",
-            "x": 45.0,
-            "y": 30.0,
-            "width": 1.5,
-            "height": 1.5,
-            "confidence": 0.98,
-            "zone": "topCenter",
-            "notes": "Hallway ceiling"
-        }
-    ],
     "summary": {
         "CABLING": {"Data Outlet": 24, "WAP": 8, "Voice Outlet": 12},
         "FIRE": {"Smoke Detector": 32, "Pull Station": 4, "Horn/Strobe": 16},
-        "ACCESS": {"Card Reader": 8, "REX Sensor": 8},
+        "ACCESS": {"Card Reader": 8, "REX Sensor": 8, "Door Contact": 8},
         "CCTV": {"Dome Camera": 12, "Bullet Camera": 4}
     },
+    "closets": [
+        {"name": "MDF", "floor": "Level 1", "location": "Main electrical room"},
+        {"name": "IDF-1", "floor": "Level 1", "location": "East wing"}
+    ],
     "codeCompliance": {
         "status": "WARNINGS",
         "violations": [
-            {
-                "code": "NFPA72_PULL_STATION",
-                "severity": "HIGH",
-                "location": "East exit door",
-                "description": "No pull station visible within 5ft of east exit",
-                "recommendation": "Add pull station per NFPA 72 17.14"
-            },
-            {
-                "code": "NFPA72_STROBE",
-                "severity": "MEDIUM",
-                "location": "Restroom area",
-                "description": "No visible strobe in restroom",
-                "recommendation": "Add ADA-compliant strobe per NFPA 72"
-            }
+            {"code": "NFPA72_STROBE", "severity": "HIGH", "location": "Restrooms", "issue": "Missing strobe in restroom areas"}
         ],
-        "passed": ["TIA_DISTANCE", "NEC_SEPARATION"],
-        "notes": "2 potential code issues identified for review"
+        "notes": "1 code issue found"
     },
-    "lowConfidenceDevices": [
-        {"id": 5, "type": "Data Outlet", "confidence": 0.65, "reason": "Symbol partially obscured"}
-    ],
-    "discrepancies": [],
-    "closets": [
-        {"name": "MDF", "floor": "Level 1", "x": 10.0, "y": 15.0, "type": "MDF"},
-        {"name": "IDF-1", "floor": "Level 1", "x": 85.0, "y": 50.0, "type": "IDF"}
-    ],
     "overallConfidence": 0.94,
-    "notes": "Final validation with code compliance check complete."
+    "totalDevices": 108,
+    "notes": "Validation complete"
 }
 
-BE THOROUGH - mark EVERY device and check ALL code requirements!`;
+IMPORTANT: Keep response COMPACT - only include summary counts, not individual device coordinates. Count accurately!`;
 }
 
 async function fullSheetValidation(filePart, gridCounts, legendInfo) {
