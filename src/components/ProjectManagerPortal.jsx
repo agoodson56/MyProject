@@ -202,6 +202,36 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
     const materialOver = module.materials.some(m => m.installed > m.qty);
     const laborOver = laborUsed > totalLabor;
 
+    // Check if falling behind on pace (yellow warning)
+    // If 50%+ of budget used but less than 50% of work done, they're behind pace
+    const laborPctUsed = totalLabor > 0 ? (laborUsed / totalLabor) * 100 : 0;
+    const workPctDone = totalQty > 0 ? (installedQty / totalQty) * 100 : 0;
+    const isBehindPace = laborPctUsed >= 50 && workPctDone < laborPctUsed;
+
+    // Calculate remaining labor estimate
+    const remainingQty = totalQty - installedQty;
+    const avgLaborPerUnit = totalLabor / (totalQty || 1);
+    const estimatedRemainingLabor = remainingQty * avgLaborPerUnit;
+    const remainingBudget = totalLabor - laborUsed;
+    const paceWarning = !laborOver && laborPctUsed >= 50 && estimatedRemainingLabor > remainingBudget;
+
+    // Determine labor light color
+    const getLaborLightColor = () => {
+        if (laborOver) return 'bg-red-500 shadow-lg shadow-red-500/50';
+        if (paceWarning || isBehindPace) return 'bg-amber-500 shadow-lg shadow-amber-500/50';
+        return 'bg-emerald-500 shadow-lg shadow-emerald-500/50';
+    };
+    const getLaborTextColor = () => {
+        if (laborOver) return 'text-red-600';
+        if (paceWarning || isBehindPace) return 'text-amber-600';
+        return 'text-cyan-600';
+    };
+    const getLaborBarColor = () => {
+        if (laborOver) return 'red';
+        if (paceWarning || isBehindPace) return 'amber';
+        return 'cyan';
+    };
+
     return (
         <div className="bg-slate-900/50 rounded-xl border border-slate-800/50 overflow-hidden">
             <button
@@ -227,15 +257,15 @@ function ModuleCard({ module, canEdit, onUpdateMaterial, dailyLogs, onAddLog, on
                             <ProgressBar value={installedQty} max={totalQty} color={materialOver ? 'red' : 'emerald'} />
                         </div>
                     </div>
-                    {/* Labor Status */}
+                    {/* Labor Status - with pace warning */}
                     <div className="flex items-center gap-2">
-                        <div className={`w-4 h-4 rounded-full ${laborOver ? 'bg-red-500 shadow-lg shadow-red-500/50' : 'bg-emerald-500 shadow-lg shadow-emerald-500/50'}`} />
+                        <div className={`w-4 h-4 rounded-full ${getLaborLightColor()}`} title={paceWarning ? 'Behind pace - speed up!' : ''} />
                         <div className="w-32">
                             <div className="flex justify-between text-xs mb-1">
-                                <span className="text-slate-700 font-semibold">Labor</span>
-                                <span className={laborOver ? 'text-red-600' : 'text-cyan-600'}>{laborPct.toFixed(0)}%</span>
+                                <span className="text-slate-700 font-semibold">Labor {(paceWarning || isBehindPace) && '⚠️'}</span>
+                                <span className={getLaborTextColor()}>{laborPct.toFixed(0)}%</span>
                             </div>
-                            <ProgressBar value={laborUsed} max={totalLabor} color={laborOver ? 'red' : 'cyan'} />
+                            <ProgressBar value={laborUsed} max={totalLabor} color={getLaborBarColor()} />
                         </div>
                     </div>
                     <div className="text-right w-24">
