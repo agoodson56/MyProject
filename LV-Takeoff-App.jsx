@@ -1,11 +1,13 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, Zap, CheckCircle, AlertTriangle, ChevronRight, X, Download, Eye, Settings, Layers, Cable, Shield, Camera, Flame, Building, Grid3X3, BarChart3, FileSpreadsheet, AlertCircle, Loader2, Plus, Trash2, User, Clock, ClipboardList } from 'lucide-react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Upload, FileText, Zap, CheckCircle, AlertTriangle, ChevronRight, X, Download, Eye, Settings, Layers, Cable, Shield, Camera, Flame, Building, Grid3X3, BarChart3, FileSpreadsheet, AlertCircle, Loader2, Plus, Trash2, User, Clock, ClipboardList, FolderOpen, ArrowLeft, Save } from 'lucide-react';
 import DetailedBOM, { generateDetailedBOM } from './src/components/DetailedBOM.jsx';
 import ProjectManagerPortal from './src/components/ProjectManagerPortal.jsx';
 import SettingsPortal, { DEFAULT_SETTINGS } from './src/components/SettingsPortal.jsx';
 import FloorPlanOverlay from './src/components/FloorPlanOverlay.jsx';
+import ProjectDashboard from './src/components/ProjectDashboard.jsx';
 import { analyzeFloorPlan, analyzeAllSheets, convertToDeviceCounts } from './src/services/blueprintAnalyzer.js';
 import { parseSpecification, crossReferenceSpecVsPlan } from './src/services/specificationParser.js';
+import { getProject, createProject, updateProject, getProgress, saveProgress } from './src/services/cloudStorage.js';
 
 // Main Application Component
 export default function LVTakeoffSystem() {
@@ -31,6 +33,12 @@ export default function LVTakeoffSystem() {
   const [showOverlay, setShowOverlay] = useState(false); // Floor plan verification overlay
   const [detectedDevices, setDetectedDevices] = useState([]); // AI-detected devices with coordinates
   const [useAiAnalysis, setUseAiAnalysis] = useState(false); // Toggle for AI vs mock data
+
+  // Cloud storage state
+  const [showDashboard, setShowDashboard] = useState(true); // Show project dashboard first
+  const [activeProject, setActiveProject] = useState(null); // Current project from cloud
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
 
   const steps = [
     { id: 0, name: 'Upload Files', icon: Upload },
@@ -1098,6 +1106,87 @@ export default function LVTakeoffSystem() {
     'A/V': 'from-purple-500 to-indigo-600'
   };
 
+  // ============ Cloud Storage Handlers ============
+
+  // Open existing project from dashboard
+  const openProject = async (project) => {
+    try {
+      const fullProject = await getProject(project.job_number);
+      if (fullProject) {
+        setActiveProject(fullProject);
+        setProjectName(fullProject.project_name);
+        if (fullProject.device_counts) setResults({ deviceCounts: fullProject.device_counts, issues: fullProject.issues || [] });
+        if (fullProject.settings) setProjectSettings(fullProject.settings);
+        setShowDashboard(false);
+        setCurrentStep(fullProject.device_counts ? 3 : 0); // Go to results if data exists
+      }
+    } catch (err) {
+      console.error('Failed to open project:', err);
+      alert('Failed to load project: ' + err.message);
+    }
+  };
+
+  // Save current project to cloud
+  const saveProjectToCloud = async () => {
+    if (!activeProject) return;
+    setIsSaving(true);
+    try {
+      await updateProject(activeProject.job_number, {
+        project_name: projectName,
+        device_counts: results?.deviceCounts,
+        bom_data: results ? generateDetailedBOM(results) : null,
+        settings: projectSettings,
+        issues: results?.issues
+      });
+      setLastSaved(new Date());
+      console.log('✅ Project saved to cloud');
+    } catch (err) {
+      console.error('Failed to save:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Auto-save when results change
+  useEffect(() => {
+    if (activeProject && results) {
+      const timeout = setTimeout(saveProjectToCloud, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [results, projectSettings]);
+
+  // Create new project and open it
+  const createNewProject = async (project) => {
+    setActiveProject(project);
+    setProjectName(project.project_name);
+    setShowDashboard(false);
+    setCurrentStep(0);
+    setResults(null);
+    setPlanFiles([]);
+    setSpecFiles([]);
+  };
+
+  // Back to dashboard
+  const backToDashboard = () => {
+    if (activeProject && results) {
+      saveProjectToCloud();
+    }
+    setShowDashboard(true);
+    setActiveProject(null);
+  };
+
+  // ============ Render ============
+
+  // Show project dashboard
+  if (showDashboard) {
+    return (
+      <ProjectDashboard
+        onOpenProject={openProject}
+        onCreateNew={createNewProject}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-black-pure text-white" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       {/* Background Pattern */}
@@ -1115,10 +1204,44 @@ export default function LVTakeoffSystem() {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
+              {/* Back to Dashboard Button */}
+              <button
+                onClick={backToDashboard}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-white rounded-lg transition-all"
+                title="Back to Projects"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <FolderOpen className="w-4 h-4" />
+              </button>
+
               <img src="/logo.png" alt="3D Technology Services" style={{ height: '240px', width: 'auto' }} />
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-gold">LV Takeoff Intelligence</h1>
-                <p className="text-xs text-gold/60">AI-Powered Low-Voltage Estimation</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-gold/60">AI-Powered Low-Voltage Estimation</p>
+                  {activeProject && (
+                    <>
+                      <span className="text-gold/30">•</span>
+                      <span className="text-xs text-cyan-400 font-mono">{activeProject.job_number}</span>
+                      <span className="text-gold/30">•</span>
+                      <span className="text-xs text-slate-400">{projectName}</span>
+                    </>
+                  )}
+                </div>
+                {/* Auto-save indicator */}
+                {activeProject && (
+                  <div className="flex items-center gap-2 mt-1">
+                    {isSaving ? (
+                      <span className="text-xs text-amber-400 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+                      </span>
+                    ) : lastSaved ? (
+                      <span className="text-xs text-emerald-400/60 flex items-center gap-1">
+                        <Save className="w-3 h-3" /> Saved {lastSaved.toLocaleTimeString()}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
 
