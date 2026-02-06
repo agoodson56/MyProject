@@ -793,14 +793,26 @@ export async function analyzeAllSheets(planFiles, onProgress) {
             });
 
             // Aggregate device counts from summary
-            if (result.summary) {
+            if (result.summary && typeof result.summary === 'object') {
                 for (const [system, devices] of Object.entries(result.summary)) {
+                    // Skip if devices is not an object or is null
+                    if (!devices || typeof devices !== 'object') {
+                        console.warn(`[AI] Skipping invalid summary entry for ${system}:`, devices);
+                        continue;
+                    }
+
+                    // Initialize system if needed
                     if (!allResults.totalsBySystem[system]) {
                         allResults.totalsBySystem[system] = {};
                     }
+
                     for (const [deviceType, count] of Object.entries(devices)) {
+                        // Skip if count is not a number
+                        const numCount = typeof count === 'number' ? count : parseInt(count) || 0;
+                        if (numCount <= 0) continue;
+
                         allResults.totalsBySystem[system][deviceType] =
-                            (allResults.totalsBySystem[system][deviceType] || 0) + count;
+                            (allResults.totalsBySystem[system][deviceType] || 0) + numCount;
 
                         // Also track in aggregatedDevices for compatibility
                         const key = `${system}:${deviceType}`;
@@ -812,10 +824,10 @@ export async function analyzeAllSheets(planFiles, onProgress) {
                                 bySheet: []
                             };
                         }
-                        allResults.aggregatedDevices[key].totalQty += count;
+                        allResults.aggregatedDevices[key].totalQty += numCount;
                         allResults.aggregatedDevices[key].bySheet.push({
                             sheet: file.name,
-                            qty: count
+                            qty: numCount
                         });
                     }
                 }
