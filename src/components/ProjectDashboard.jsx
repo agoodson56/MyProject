@@ -93,21 +93,30 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-8">
             <div className="max-w-6xl mx-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                            Project Dashboard
-                        </h1>
-                        <p className="text-slate-400 mt-1">Select a project or create a new one</p>
+                {/* Header with Logo */}
+                <div className="flex flex-col items-center mb-8">
+                    <div className="flex items-center gap-6 mb-6">
+                        <img src="/logo.png" alt="3D Technology Services" style={{ height: '120px', width: 'auto' }} />
+                        <div className="text-center">
+                            <h1 className="text-3xl font-bold text-gold">LV Takeoff Intelligence</h1>
+                            <p className="text-gold/60 text-sm">AI-Powered Low-Voltage Construction Estimation</p>
+                        </div>
                     </div>
-                    <button
-                        onClick={() => setShowCreateModal(true)}
-                        className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/25 transition-all"
-                    >
-                        <Plus className="w-5 h-5" />
-                        New Project
-                    </button>
+                    <div className="w-full flex items-center justify-between">
+                        <div>
+                            <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                                Project Dashboard
+                            </h2>
+                            <p className="text-slate-400 mt-1">Select a project or create a new one</p>
+                        </div>
+                        <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/25 transition-all"
+                        >
+                            <Plus className="w-5 h-5" />
+                            New Project
+                        </button>
+                    </div>
                 </div>
 
                 {/* Search */}
