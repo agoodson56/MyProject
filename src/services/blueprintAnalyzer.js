@@ -185,12 +185,80 @@ async function callGeminiAPI(prompt, filePart, temperature = 0.1) {
         throw new Error('No response from Gemini API');
     }
 
-    // Parse JSON from response
-    const jsonMatch = textResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
-        textResponse.match(/```\s*([\s\S]*?)\s*```/) ||
-        [null, textResponse];
+    // Robust JSON extraction with multiple fallback strategies
+    return extractJSON(textResponse);
+}
 
-    return JSON.parse((jsonMatch[1] || textResponse).trim());
+/**
+ * Robust JSON extraction from AI text responses
+ * Handles markdown code blocks, malformed JSON, and common issues
+ */
+function extractJSON(text) {
+    // Strategy 1: Extract from markdown code blocks
+    const jsonBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    let jsonStr = jsonBlockMatch ? jsonBlockMatch[1] : text;
+
+    // Strategy 2: Find JSON object/array boundaries
+    const firstBrace = jsonStr.indexOf('{');
+    const firstBracket = jsonStr.indexOf('[');
+    const startIdx = firstBrace >= 0 && (firstBracket < 0 || firstBrace < firstBracket) ? firstBrace : firstBracket;
+
+    if (startIdx >= 0) {
+        const isObject = jsonStr[startIdx] === '{';
+        const endChar = isObject ? '}' : ']';
+        let depth = 0;
+        let endIdx = -1;
+
+        for (let i = startIdx; i < jsonStr.length; i++) {
+            if (jsonStr[i] === '{' || jsonStr[i] === '[') depth++;
+            if (jsonStr[i] === '}' || jsonStr[i] === ']') depth--;
+            if (depth === 0) {
+                endIdx = i;
+                break;
+            }
+        }
+
+        if (endIdx > startIdx) {
+            jsonStr = jsonStr.slice(startIdx, endIdx + 1);
+        }
+    }
+
+    // Strategy 3: Clean common JSON issues
+    jsonStr = jsonStr
+        .replace(/,\s*}/g, '}')           // Remove trailing commas in objects
+        .replace(/,\s*\]/g, ']')          // Remove trailing commas in arrays
+        .replace(/'/g, '"')               // Single quotes to double quotes
+        .replace(/(\w+):/g, '"$1":')      // Unquoted keys (simple cases)
+        .replace(/""+/g, '"')             // Fix double quotes
+        .replace(/\n/g, ' ')              // Remove newlines
+        .trim();
+
+    try {
+        return JSON.parse(jsonStr);
+    } catch (e1) {
+        console.warn('[AI] JSON parse attempt 1 failed:', e1.message);
+        console.log('[AI] Raw text:', text.substring(0, 500));
+
+        // Strategy 4: Try to extract just device counts manually
+        const deviceCounts = {};
+        const countMatches = text.matchAll(/"?(\w+[\s\w]*)"?\s*[:=]\s*(\d+)/g);
+        for (const match of countMatches) {
+            const key = match[1].trim();
+            const value = parseInt(match[2]);
+            if (!isNaN(value) && value > 0 && value < 10000) {
+                deviceCounts[key] = value;
+            }
+        }
+
+        if (Object.keys(deviceCounts).length > 0) {
+            console.log('[AI] Extracted counts via regex:', deviceCounts);
+            return { devices: deviceCounts, symbols: [], summary: deviceCounts };
+        }
+
+        // Return empty result rather than throwing
+        console.error('[AI] Could not parse response, returning empty result');
+        return { devices: {}, symbols: [], summary: {} };
+    }
 }
 
 // ============================================================================
