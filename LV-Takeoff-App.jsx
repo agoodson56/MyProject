@@ -756,56 +756,96 @@ export default function LVTakeoffSystem() {
 
   // Build results object from AI analysis
   const buildResultsFromAI = (aiResults, deviceCounts) => {
-    // Restructure device counts for display
+    // Map AI system names to display names
+    const systemDisplayMapping = {
+      'CABLING': 'DATACOM',
+      'ACCESS': 'ACCESS CONTROL',
+      'CCTV': 'SECURITY',
+      'FIRE': 'FIRE ALARM',
+      'INTERCOM': 'INTERCOM',
+      'A/V': 'A/V',
+      'OTHER': 'OTHER',
+      'datacom': 'DATACOM',
+      'security': 'SECURITY',
+      'accessControl': 'ACCESS CONTROL',
+      'av': 'A/V'
+    };
+
+    // Initialize with all possible systems
     const formattedDeviceCounts = {
       'DATACOM': {},
       'SECURITY': {},
       'ACCESS CONTROL': {},
-      'A/V': {}
+      'A/V': {},
+      'FIRE ALARM': {},
+      'INTERCOM': {},
+      'OTHER': {}
     };
 
-    const systemMapping = {
-      datacom: 'DATACOM',
-      security: 'SECURITY',
-      accessControl: 'ACCESS CONTROL',
-      av: 'A/V'
-    };
+    // Safe iteration over device counts
+    if (deviceCounts && typeof deviceCounts === 'object') {
+      for (const [system, devices] of Object.entries(deviceCounts)) {
+        // Skip if devices is not an object
+        if (!devices || typeof devices !== 'object') continue;
 
-    for (const [system, devices] of Object.entries(deviceCounts)) {
-      const targetSystem = systemMapping[system] || system.toUpperCase();
-      for (const [key, device] of Object.entries(devices)) {
-        formattedDeviceCounts[targetSystem][device.name] = {
-          qty: device.qty,
-          byFloor: { 'All Floors': device.qty }
-        };
+        // Map to display name or create new system
+        const targetSystem = systemDisplayMapping[system] || system.toUpperCase();
+
+        // Ensure target system exists
+        if (!formattedDeviceCounts[targetSystem]) {
+          formattedDeviceCounts[targetSystem] = {};
+        }
+
+        for (const [key, device] of Object.entries(devices)) {
+          // Skip invalid entries
+          if (!device || typeof device !== 'object') continue;
+
+          const deviceName = device.name || key;
+          formattedDeviceCounts[targetSystem][deviceName] = {
+            qty: device.qty || 0,
+            byFloor: { 'All Floors': device.qty || 0 }
+          };
+        }
       }
     }
+
+    // Safely get aggregated devices count
+    const getAggregatedTotal = () => {
+      if (!aiResults?.aggregatedDevices || typeof aiResults.aggregatedDevices !== 'object') {
+        return 0;
+      }
+      return Object.values(aiResults.aggregatedDevices).reduce((sum, d) => sum + (d?.totalQty || 0), 0);
+    };
+
+    const totalDevices = getAggregatedTotal();
 
     return {
       project: projectName || 'Untitled Project',
       processedAt: new Date().toISOString(),
       aiAnalysis: aiResults, // Store raw AI results
 
-      sheets: aiResults.sheets.map((sheet, i) => ({
+      sheets: (aiResults?.sheets || []).map((sheet, i) => ({
         id: `sheet-${i}`,
         name: sheet.fileName || `Sheet ${i + 1}`,
         floor: sheet.sheetName || 'Unknown',
         discipline: 'Technology',
-        deviceCount: sheet.devices?.reduce((sum, d) => sum + d.qty, 0) || 0,
-        confidence: 0.9
+        deviceCount: sheet.devices?.reduce((sum, d) => sum + (d?.qty || 0), 0) || 0,
+        confidence: sheet.overallConfidence || 0.9
       })),
 
       deviceCounts: formattedDeviceCounts,
 
       cableSummary: estimateCabling(aiResults),
 
-      closets: aiResults.closets || generateClosetsFromDevices(aiResults),
+      closets: aiResults?.closets || generateClosetsFromDevices(aiResults),
 
-      issues: aiResults.issues.map((issue, i) => ({
+      backbones: aiResults?.backbones || [],
+
+      issues: (aiResults?.issues || []).map((issue, i) => ({
         id: i + 1,
         severity: issue.severity || 'MEDIUM',
         category: 'AI_ANALYSIS',
-        description: issue.message || issue,
+        description: issue.message || (typeof issue === 'string' ? issue : JSON.stringify(issue)),
         impact: 'Review recommended',
         sheetRef: issue.sheet || '',
         needsRfi: true
@@ -819,15 +859,16 @@ export default function LVTakeoffSystem() {
 
       masterBom: generateBomFromAI(aiResults),
 
-      jHookCount: Math.round(Object.values(aiResults.aggregatedDevices).reduce((sum, d) => sum + d.totalQty, 0) * 12),
-      totalCableFt: Object.values(aiResults.aggregatedDevices).reduce((sum, d) => sum + d.totalQty, 0) * 100,
-      serviceLoopFt: Object.values(aiResults.aggregatedDevices).reduce((sum, d) => sum + d.totalQty, 0) * 10
+      jHookCount: Math.round(totalDevices * 12),
+      totalCableFt: totalDevices * 100,
+      serviceLoopFt: totalDevices * 10
     };
   };
 
   // Estimate cabling from device counts
   const estimateCabling = (aiResults) => {
-    const totalDevices = Object.values(aiResults.aggregatedDevices).reduce((sum, d) => sum + d.totalQty, 0);
+    const aggregated = aiResults?.aggregatedDevices || {};
+    const totalDevices = Object.values(aggregated).reduce((sum, d) => sum + (d?.totalQty || 0), 0);
     return {
       'CAT6A Plenum': { system: 'DATACOM', totalFt: totalDevices * 100, boxes: Math.ceil(totalDevices * 100 / 1000), waste: 1.05 },
       'Coax RG-6': { system: 'A/V', totalFt: totalDevices * 30, boxes: Math.ceil(totalDevices * 30 / 1000), waste: 1.05 }
@@ -837,17 +878,19 @@ export default function LVTakeoffSystem() {
   // Generate BOM items from AI results
   const generateBomFromAI = (aiResults) => {
     const bomItems = [];
+    const aggregated = aiResults?.aggregatedDevices || {};
 
-    for (const [deviceName, data] of Object.entries(aiResults.aggregatedDevices)) {
+    for (const [deviceName, data] of Object.entries(aggregated)) {
+      if (!data || typeof data !== 'object') continue;
       bomItems.push({
-        system: 'DATACOM',
+        system: data.system || 'DATACOM',
         category: 'Device',
-        description: deviceName,
+        description: data.symbol || deviceName,
         manufacturer: 'TBD',
         sku: 'TBD',
         unit: 'EA',
-        qty: data.totalQty,
-        notes: `AI counted from ${data.bySheet.length} sheet(s)`
+        qty: data.totalQty || 0,
+        notes: `AI counted from ${data.bySheet?.length || 1} sheet(s)`
       });
     }
 
