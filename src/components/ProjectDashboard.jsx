@@ -232,7 +232,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                                         value={newProject.job_number}
                                         onChange={(e) => setNewProject({ ...newProject, job_number: e.target.value })}
                                         placeholder="e.g., 2026-0001"
-                                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                        className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-black placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                                     />
                                 </div>
                                 <div>
@@ -242,7 +242,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                                         value={newProject.project_name}
                                         onChange={(e) => setNewProject({ ...newProject, project_name: e.target.value })}
                                         placeholder="e.g., Main Street Office Building"
-                                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                        className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-black placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                                     />
                                 </div>
                                 <div>
@@ -252,7 +252,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                                         value={newProject.client_name}
                                         onChange={(e) => setNewProject({ ...newProject, client_name: e.target.value })}
                                         placeholder="e.g., Acme Corporation"
-                                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                        className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-black placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                                     />
                                 </div>
                                 <div>
@@ -262,7 +262,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                                         value={newProject.address}
                                         onChange={(e) => setNewProject({ ...newProject, address: e.target.value })}
                                         placeholder="e.g., 123 Main St, Sacramento, CA"
-                                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                        className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-black placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                                     />
                                 </div>
                             </div>
@@ -270,14 +270,14 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                             <div className="flex justify-end gap-3 mt-6">
                                 <button
                                     onClick={() => { setShowCreateModal(false); setCreateError(''); }}
-                                    className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+                                    className="px-4 py-2 bg-slate-200 text-black rounded-lg hover:bg-slate-300 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleCreate}
                                     disabled={creating}
-                                    className="flex items-center gap-2 px-5 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 disabled:opacity-50 transition-colors"
+                                    className="flex items-center gap-2 px-5 py-2 bg-cyan-500 text-black font-medium rounded-lg hover:bg-cyan-400 disabled:opacity-50 transition-colors"
                                 >
                                     {creating && <Loader2 className="w-4 h-4 animate-spin" />}
                                     Create Project
