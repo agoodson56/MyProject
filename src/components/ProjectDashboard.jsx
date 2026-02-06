@@ -98,7 +98,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                     <div className="flex items-center gap-6 mb-6">
                         <img src="/logo.png" alt="3D Technology Services" style={{ height: '120px', width: 'auto' }} />
                         <div className="text-center">
-                            <h1 className="text-3xl font-bold text-gold">LV Takeoff Intelligence</h1>
+                            <h1 className="text-3xl font-bold text-gold">Project Manager</h1>
                             <p className="text-gold/60 text-sm">AI-Powered Low-Voltage Construction Estimation</p>
                         </div>
                     </div>
