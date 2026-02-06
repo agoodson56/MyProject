@@ -40,6 +40,9 @@ export default function LVTakeoffSystem() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
+  // Debug logging
+  console.log('🏠 LVTakeoffSystem RENDER - showDashboard:', showDashboard);
+
   const steps = [
     { id: 0, name: 'Upload Files', icon: Upload },
     { id: 1, name: 'Review Legends', icon: Layers },
@@ -2357,8 +2360,3 @@ export default function LVTakeoffSystem() {
     </div>
   );
 }
-//
-Build
-timestamp:
-%date%
-%time%
