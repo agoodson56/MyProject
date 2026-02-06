@@ -106,7 +106,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                         <p className="text-slate-400">Select a project or create a new one</p>
                         <button
                             onClick={() => setShowCreateModal(true)}
-                            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/25 transition-all"
+                            className="flex items-center gap-2 px-8 py-3 bg-gold text-black rounded-xl font-bold hover:bg-gold/90 hover:shadow-lg hover:shadow-gold/25 transition-all"
                         >
                             <Plus className="w-5 h-5" />
                             New Project
