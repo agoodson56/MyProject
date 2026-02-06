@@ -764,11 +764,14 @@ export default function LVTakeoffSystem() {
       'FIRE': 'FIRE ALARM',
       'INTERCOM': 'INTERCOM',
       'A/V': 'A/V',
+      'AV': 'A/V',
+      'INTRUSION': 'INTRUSION',
       'OTHER': 'OTHER',
       'datacom': 'DATACOM',
       'security': 'SECURITY',
       'accessControl': 'ACCESS CONTROL',
-      'av': 'A/V'
+      'av': 'A/V',
+      'intrusion': 'INTRUSION'
     };
 
     // Initialize with all possible systems
@@ -779,6 +782,7 @@ export default function LVTakeoffSystem() {
       'A/V': {},
       'FIRE ALARM': {},
       'INTERCOM': {},
+      'INTRUSION': {},
       'OTHER': {}
     };
 

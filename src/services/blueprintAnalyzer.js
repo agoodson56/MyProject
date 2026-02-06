@@ -522,12 +522,13 @@ CLOSET ANALYSIS - CRITICAL:
 - For multi-floor buildings: MDF typically on main floor, IDFs on each floor
 
 SYSTEMS TO COUNT:
-- CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP
-- ACCESS: Card Readers, REX Sensors, Door Contacts, Electric Strikes, Mag Locks
-- CCTV: Dome Cameras, Bullet Cameras, PTZ Cameras
-- FIRE: Smoke Detectors, Heat Detectors, Pull Stations, Horn/Strobes, Duct Detectors
-- INTERCOM: Intercom Stations, Speakers
-- A/V: Audio speakers, displays
+- CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP (Wireless Access Points)
+- ACCESS: Card Readers, REX Sensors, Door Contacts, Electric Strikes, Mag Locks, Keypads
+- CCTV: Dome Cameras, Bullet Cameras, PTZ Cameras, NVR/DVR
+- FIRE: Smoke Detectors, Heat Detectors, Pull Stations, Horn/Strobes, Duct Detectors, NAC Panels
+- INTERCOM: Intercom Stations, Video Intercom, Door Stations
+- A/V: Speakers, Ceiling Speakers, Amplifiers, Displays/Monitors, Volume Controls, DSP, Projectors
+- INTRUSION: Motion Detectors, PIR Sensors, Glass Break Detectors, Door/Window Contacts, Keypads, Siren/Strobe, Intrusion Panel
 
 CODE COMPLIANCE CHECKS (NFPA 72, NEC, TIA-568, ADA, IBC):
 - Smoke detector spacing (30ft max)
@@ -576,14 +577,16 @@ OUTPUT FORMAT (JSON):
             "feedsTo": ["IDF-1", "IDF-2"],
             "dataPorts": 53,
             "voicePorts": 20,
-            "fiberPorts": 0,
-            "cableRuns": 87,
+            "fiberPorts": 4,
+            "cableRuns": 91,
             "avgCableLength": 85,
-            "totalCableFt": 7395,
+            "totalCableFt": 7735,
             "devicesFed": {
-                "CABLING": {"Data Outlet": 45, "Voice Outlet": 20, "WAP": 8},
+                "CABLING": {"Data Outlet": 45, "Voice Outlet": 20, "WAP": 8, "Fiber Outlet": 4},
                 "ACCESS": {"Card Reader": 4, "REX Sensor": 4, "Door Contact": 4},
-                "CCTV": {"Dome Camera": 6}
+                "CCTV": {"Dome Camera": 6},
+                "AV": {"Ceiling Speaker": 12, "Amplifier": 1},
+                "INTRUSION": {"Motion Detector": 4, "Door/Window Contact": 6, "Keypad": 1}
             },
             "notes": "Main hub - feeds lobby, admin offices"
         },
@@ -623,10 +626,12 @@ OUTPUT FORMAT (JSON):
         }
     ],
     "summary": {
-        "CABLING": {"Data Outlet": 105, "WAP": 18, "Voice Outlet": 32},
+        "CABLING": {"Data Outlet": 105, "WAP": 18, "Voice Outlet": 32, "Fiber Outlet": 8},
         "FIRE": {"Smoke Detector": 42, "Pull Station": 6, "Horn/Strobe": 24},
         "ACCESS": {"Card Reader": 6, "REX Sensor": 4, "Door Contact": 4},
-        "CCTV": {"Dome Camera": 10, "Bullet Camera": 2}
+        "CCTV": {"Dome Camera": 10, "Bullet Camera": 2},
+        "AV": {"Ceiling Speaker": 28, "Amplifier": 2, "Volume Control": 6},
+        "INTRUSION": {"Motion Detector": 12, "Glass Break Detector": 4, "Door/Window Contact": 18, "Keypad": 3}
     },
     "codeCompliance": {
         "status": "WARNINGS",
@@ -643,9 +648,12 @@ OUTPUT FORMAT (JSON):
 }
 
 IMPORTANT: 
-- Group ALL cabling/access/CCTV devices by which closet feeds them
+- Group ALL cabling/access/CCTV/AV/intrusion devices by which closet feeds them
 - Fire alarm devices typically connect to FACP (Fire Alarm Control Panel), not data closets
-- Calculate total cable runs per closet
+- AV devices (speakers, amplifiers) connect to the nearest MDF/IDF
+- Intrusion devices (motion detectors, glass breaks, contacts) connect to the intrusion panel or nearest closet
+- Count FIBER separately: backbone fiber between closets AND horizontal fiber drops to work areas
+- Calculate total cable runs per closet (include data, voice, fiber, AV, and intrusion cables)
 - Keep response structured but complete!`;
 }
 
@@ -883,6 +891,8 @@ export function convertToDeviceCounts(aiResults) {
         FIRE: {},
         INTERCOM: {},
         'A/V': {},
+        AV: {},
+        INTRUSION: {},
         OTHER: {}  // Catch-all for unknown systems
     };
 
