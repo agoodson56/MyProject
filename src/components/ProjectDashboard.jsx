@@ -103,12 +103,7 @@ export default function ProjectDashboard({ onOpenProject, onCreateNew }) {
                         </div>
                     </div>
                     <div className="w-full flex items-center justify-between">
-                        <div>
-                            <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                                Project Manager
-                            </h2>
-                            <p className="text-slate-400 mt-1">Select a project or create a new one</p>
-                        </div>
+                        <p className="text-slate-400">Select a project or create a new one</p>
                         <button
                             onClick={() => setShowCreateModal(true)}
                             className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/25 transition-all"
