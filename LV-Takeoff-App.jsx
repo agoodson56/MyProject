@@ -179,6 +179,33 @@ export default function LVTakeoffSystem() {
     // Calculate cable lengths using settings
     const cablePerRun = settings.avgCableRunLength + settings.serviceLoopLength;
 
+    // A/V devices
+    const avDevices = deviceCounts['A/V'] || deviceCounts['AV'] || {};
+    const ceilingSpeakers = (avDevices['Ceiling Speaker']?.qty || 0);
+    const speakers = (avDevices['Speaker']?.qty || 0);
+    const amplifiers = (avDevices['Amplifier']?.qty || 0);
+    const displays = (avDevices['Display']?.qty || avDevices['Display/Monitor']?.qty || avDevices['Displays/Monitors']?.qty || 0);
+    const volumeControls = (avDevices['Volume Control']?.qty || 0);
+    const projectors = (avDevices['Projector']?.qty || 0);
+    const totalAVDevices = Object.values(avDevices).reduce((sum, d) => sum + (d.qty || 0), 0);
+
+    // Intrusion devices
+    const intrusionDevices = deviceCounts['INTRUSION'] || {};
+    const motionDetectors = (intrusionDevices['Motion Detector']?.qty || intrusionDevices['PIR Sensor']?.qty || 0);
+    const glassBreaks = (intrusionDevices['Glass Break Detector']?.qty || intrusionDevices['Glass Break']?.qty || 0);
+    const dwContacts = (intrusionDevices['Door/Window Contact']?.qty || 0);
+    const intrusionKeypads = (intrusionDevices['Keypad']?.qty || 0);
+    const totalIntrusionDevices = Object.values(intrusionDevices).reduce((sum, d) => sum + (d.qty || 0), 0);
+
+    // Fiber: calculate from backbone data (closets) + horizontal fiber drops
+    const backboneFiberFt = results?.backbones
+      ? results.backbones
+        .filter(b => b.type === 'Fiber')
+        .reduce((sum, b) => sum + (parseInt(b.estimatedLength) || 150), 0)
+      : 0;
+    const horizontalFiberFt = fiberOutlets * cablePerRun * wasteFactor;
+    const totalFiberFt = Math.round((backboneFiberFt + horizontalFiberFt) * wasteFactor) || Math.round(fiberOutlets * 200 * wasteFactor);
+
     return {
       'CAT6A Plenum': {
         system: 'CABLING',
@@ -194,8 +221,8 @@ export default function LVTakeoffSystem() {
       },
       'OM4 Fiber': {
         system: 'CABLING',
-        totalFt: Math.round(fiberOutlets * 100 * wasteFactor), // Fiber uses fixed 100ft avg for backbone
-        boxes: Math.ceil(fiberOutlets * 100 * wasteFactor / settings.feetPerBox),
+        totalFt: totalFiberFt,
+        boxes: Math.ceil(totalFiberFt / 1000),
         waste: wasteFactor
       },
       '18/4 Shielded': {
@@ -206,7 +233,7 @@ export default function LVTakeoffSystem() {
       },
       '22/6 Shielded': {
         system: 'ACCESS',
-        totalFt: Math.round((rexSensors + doorContacts) * cablePerRun * 0.5 * wasteFactor), // Shorter runs
+        totalFt: Math.round((rexSensors + doorContacts) * cablePerRun * 0.5 * wasteFactor),
         boxes: Math.ceil((rexSensors + doorContacts) * cablePerRun * 0.5 * wasteFactor / settings.feetPerBox),
         waste: wasteFactor
       },
@@ -218,14 +245,38 @@ export default function LVTakeoffSystem() {
       },
       '18/2 FPLP': {
         system: 'FIRE',
-        totalFt: Math.round((smokeDetectors + heatDetectors) * cablePerRun * 0.5 * wasteFactor), // SLC daisy-chain
+        totalFt: Math.round((smokeDetectors + heatDetectors) * cablePerRun * 0.5 * wasteFactor),
         boxes: Math.ceil((smokeDetectors + heatDetectors) * cablePerRun * 0.5 * wasteFactor / settings.feetPerBox),
         waste: wasteFactor
       },
       '14/2 FPLP': {
         system: 'FIRE',
-        totalFt: Math.round((pullStations + hornStrobes) * cablePerRun * 0.5 * wasteFactor), // NAC circuit
+        totalFt: Math.round((pullStations + hornStrobes) * cablePerRun * 0.5 * wasteFactor),
         boxes: Math.ceil((pullStations + hornStrobes) * cablePerRun * 0.5 * wasteFactor / settings.feetPerBox),
+        waste: wasteFactor
+      },
+      '18/2 Speaker Wire': {
+        system: 'A/V',
+        totalFt: Math.round((ceilingSpeakers + speakers) * cablePerRun * 0.75 * wasteFactor),
+        boxes: Math.ceil((ceilingSpeakers + speakers) * cablePerRun * 0.75 * wasteFactor / settings.feetPerBox),
+        waste: wasteFactor
+      },
+      'CAT6 (AV)': {
+        system: 'A/V',
+        totalFt: Math.round((displays + projectors + amplifiers + volumeControls) * cablePerRun * wasteFactor),
+        boxes: Math.ceil((displays + projectors + amplifiers + volumeControls) * cablePerRun * wasteFactor / settings.feetPerBox),
+        waste: wasteFactor
+      },
+      '22/4 Shielded (Intrusion)': {
+        system: 'INTRUSION',
+        totalFt: Math.round((motionDetectors + glassBreaks + dwContacts) * cablePerRun * 0.5 * wasteFactor),
+        boxes: Math.ceil((motionDetectors + glassBreaks + dwContacts) * cablePerRun * 0.5 * wasteFactor / settings.feetPerBox),
+        waste: wasteFactor
+      },
+      '22/4 (Intrusion Keypad)': {
+        system: 'INTRUSION',
+        totalFt: Math.round(intrusionKeypads * cablePerRun * wasteFactor),
+        boxes: Math.ceil(intrusionKeypads * cablePerRun * wasteFactor / settings.feetPerBox),
         waste: wasteFactor
       }
     };
@@ -381,7 +432,61 @@ export default function LVTakeoffSystem() {
       { system: 'FIRE', category: 'Base', description: 'Detector Base Standard', manufacturer: 'Notifier', sku: 'B501', unit: 'EA', qty: smokeDetectors + heatDetectors, unitCost: 18.00, laborHrs: 0.1, notes: '1 per detector' },
       { system: 'FIRE', category: 'Back Box', description: 'Back Box 4" Square', manufacturer: 'Raco', sku: '52151', unit: 'EA', qty: hornStrobes + pullStations, unitCost: 4.50, laborHrs: 0.15, notes: 'NAC devices' },
       { system: 'FIRE', category: 'Cable', description: '18/2 FPLP Shielded', manufacturer: 'West Penn', sku: '60982B', unit: 'FT', qty: cableSummary['18/2 FPLP']?.totalFt || 0, unitCost: 0.38, laborHrs: 0.008, notes: 'SLC circuit' },
-      { system: 'FIRE', category: 'Cable', description: '14/2 FPLP', manufacturer: 'West Penn', sku: '60142B', unit: 'FT', qty: cableSummary['14/2 FPLP']?.totalFt || 0, unitCost: 0.42, laborHrs: 0.008, notes: 'NAC circuit' }
+      { system: 'FIRE', category: 'Cable', description: '14/2 FPLP', manufacturer: 'West Penn', sku: '60142B', unit: 'FT', qty: cableSummary['14/2 FPLP']?.totalFt || 0, unitCost: 0.42, laborHrs: 0.008, notes: 'NAC circuit' },
+
+      // === A/V (AUDIO/VIDEO) ===
+      ...(() => {
+        const avDevices = deviceCounts['A/V'] || deviceCounts['AV'] || {};
+        const ceilingSpeakers = avDevices['Ceiling Speaker']?.qty || 0;
+        const speakers = avDevices['Speaker']?.qty || 0;
+        const amplifiers = avDevices['Amplifier']?.qty || 0;
+        const displays = avDevices['Display']?.qty || avDevices['Display/Monitor']?.qty || avDevices['Displays/Monitors']?.qty || 0;
+        const volumeControls = avDevices['Volume Control']?.qty || 0;
+        const projectors = avDevices['Projector']?.qty || 0;
+        const dsp = avDevices['DSP']?.qty || 0;
+        const totalSpeakers = ceilingSpeakers + speakers;
+        return [
+          { system: 'A/V', category: 'Speaker', description: 'Ceiling Speaker, 70V, 8"', manufacturer: 'Atlas', sku: 'FAP82T', unit: 'EA', qty: ceilingSpeakers, unitCost: 125.00, laborHrs: 0.5, notes: 'General paging/BGM' },
+          { system: 'A/V', category: 'Speaker', description: 'Wall Speaker, 70V', manufacturer: 'Atlas', sku: 'SM82T', unit: 'EA', qty: speakers, unitCost: 145.00, laborHrs: 0.5, notes: 'Wall-mounted areas' },
+          { system: 'A/V', category: 'Speaker Baffle', description: 'Speaker Tile Bridge/Baffle', manufacturer: 'Atlas', sku: 'T75-8', unit: 'EA', qty: ceilingSpeakers, unitCost: 18.00, laborHrs: 0.1, notes: '1 per ceiling speaker' },
+          { system: 'A/V', category: 'Amplifier', description: 'Mixer Amplifier, 70V, 120W', manufacturer: 'Atlas', sku: 'AA120G', unit: 'EA', qty: amplifiers || Math.ceil(totalSpeakers / 20) || 0, unitCost: 685.00, laborHrs: 1.5, notes: '1 per 20 speakers' },
+          { system: 'A/V', category: 'DSP', description: 'Digital Signal Processor', manufacturer: 'Biamp', sku: 'TesiraFORTE-AI', unit: 'EA', qty: dsp || (totalSpeakers > 0 ? 1 : 0), unitCost: 2850.00, laborHrs: 4.0, notes: 'Audio processing' },
+          { system: 'A/V', category: 'Volume Control', description: 'Volume Control, Wall Mount', manufacturer: 'Atlas', sku: 'AT35', unit: 'EA', qty: volumeControls, unitCost: 45.00, laborHrs: 0.25, notes: 'Zone volume' },
+          { system: 'A/V', category: 'Display', description: 'Commercial Display, 55"', manufacturer: 'Samsung', sku: 'QM55B', unit: 'EA', qty: displays, unitCost: 1250.00, laborHrs: 1.5, notes: 'Digital signage' },
+          { system: 'A/V', category: 'Display Mount', description: 'TV Wall Mount, Tilt', manufacturer: 'Chief', sku: 'RLT2', unit: 'EA', qty: displays, unitCost: 125.00, laborHrs: 0.5, notes: '1 per display' },
+          { system: 'A/V', category: 'Projector', description: 'Laser Projector, 5000 Lumen', manufacturer: 'Epson', sku: 'EB-L630SU', unit: 'EA', qty: projectors, unitCost: 3500.00, laborHrs: 2.0, notes: 'Conference rooms' },
+          { system: 'A/V', category: 'Projector Mount', description: 'Projector Ceiling Mount', manufacturer: 'Chief', sku: 'RPAU', unit: 'EA', qty: projectors, unitCost: 185.00, laborHrs: 0.75, notes: '1 per projector' },
+          { system: 'A/V', category: 'Cable', description: '18/2 Speaker Wire, Plenum', manufacturer: 'West Penn', sku: '25224B', unit: 'FT', qty: cableSummary['18/2 Speaker Wire']?.totalFt || 0, unitCost: 0.28, laborHrs: 0.008, notes: 'Speaker runs' },
+          { system: 'A/V', category: 'Cable', description: 'CAT6 Plenum (AV)', manufacturer: 'Belden', sku: '7939A', unit: 'FT', qty: cableSummary['CAT6 (AV)']?.totalFt || 0, unitCost: 0.35, laborHrs: 0.008, notes: 'Display/DSP data' },
+          { system: 'A/V', category: 'Cable', description: 'HDMI over CAT6 Extender Kit', manufacturer: 'Crestron', sku: 'HD-TX/RX-4KZ-101', unit: 'EA', qty: displays + projectors, unitCost: 485.00, laborHrs: 0.5, notes: 'Video transport' },
+          { system: 'A/V', category: 'Back Box', description: 'Back Box 4" Square', manufacturer: 'Raco', sku: '52151', unit: 'EA', qty: totalSpeakers + volumeControls, unitCost: 4.50, laborHrs: 0.15, notes: 'AV devices' }
+        ];
+      })(),
+
+      // === INTRUSION DETECTION ===
+      ...(() => {
+        const intrusionDevices = deviceCounts['INTRUSION'] || {};
+        const motionDetectors = intrusionDevices['Motion Detector']?.qty || intrusionDevices['PIR Sensor']?.qty || 0;
+        const glassBreaks = intrusionDevices['Glass Break Detector']?.qty || intrusionDevices['Glass Break']?.qty || 0;
+        const dwContacts = intrusionDevices['Door/Window Contact']?.qty || 0;
+        const intrusionKeypads = intrusionDevices['Keypad']?.qty || 0;
+        const sirenStrobes = intrusionDevices['Siren/Strobe']?.qty || 0;
+        const totalIntrusionDevices = motionDetectors + glassBreaks + dwContacts;
+        return [
+          { system: 'INTRUSION', category: 'Motion', description: 'PIR Motion Detector, Dual-Tech', manufacturer: 'Bosch', sku: 'DS938Z', unit: 'EA', qty: motionDetectors, unitCost: 145.00, laborHrs: 0.5, notes: 'Interior coverage' },
+          { system: 'INTRUSION', category: 'Glass Break', description: 'Glass Break Detector, Acoustic', manufacturer: 'Bosch', sku: 'DS1101i', unit: 'EA', qty: glassBreaks, unitCost: 95.00, laborHrs: 0.35, notes: '25ft radius' },
+          { system: 'INTRUSION', category: 'Contact', description: 'Door/Window Contact, Surface', manufacturer: 'GE', sku: '1076-N', unit: 'EA', qty: dwContacts, unitCost: 18.00, laborHrs: 0.25, notes: 'Perimeter protection' },
+          { system: 'INTRUSION', category: 'Contact', description: 'Door/Window Contact, Recessed', manufacturer: 'GE', sku: '1076D-N', unit: 'EA', qty: Math.ceil(dwContacts * 0.3), unitCost: 24.00, laborHrs: 0.35, notes: 'Concealed locations' },
+          { system: 'INTRUSION', category: 'Keypad', description: 'Intrusion Keypad, LCD', manufacturer: 'Bosch', sku: 'B920', unit: 'EA', qty: intrusionKeypads, unitCost: 185.00, laborHrs: 0.5, notes: 'Arm/disarm' },
+          { system: 'INTRUSION', category: 'Siren', description: 'Interior Siren/Strobe', manufacturer: 'Bosch', sku: 'DS1101i-SR', unit: 'EA', qty: sirenStrobes || Math.ceil(totalIntrusionDevices / 10) || 0, unitCost: 65.00, laborHrs: 0.25, notes: 'Alarm notification' },
+          { system: 'INTRUSION', category: 'Panel', description: 'Intrusion Panel, 48 Zone', manufacturer: 'Bosch', sku: 'B9512G', unit: 'EA', qty: totalIntrusionDevices > 0 ? Math.ceil(totalIntrusionDevices / 48) : 0, unitCost: 1450.00, laborHrs: 8.0, notes: 'Main panel' },
+          { system: 'INTRUSION', category: 'Power Supply', description: 'Power Supply 12V 4A w/Battery', manufacturer: 'Altronix', sku: 'AL400ULACM', unit: 'EA', qty: totalIntrusionDevices > 0 ? Math.ceil(totalIntrusionDevices / 48) : 0, unitCost: 145.00, laborHrs: 0.5, notes: '1 per panel' },
+          { system: 'INTRUSION', category: 'Battery', description: 'Backup Battery, 12V 7Ah', manufacturer: 'Altronix', sku: 'BT126', unit: 'EA', qty: totalIntrusionDevices > 0 ? Math.ceil(totalIntrusionDevices / 48) * 2 : 0, unitCost: 22.00, laborHrs: 0.1, notes: '2 per panel' },
+          { system: 'INTRUSION', category: 'Cable', description: '22/4 Shielded Plenum', manufacturer: 'West Penn', sku: '25254B-22', unit: 'FT', qty: cableSummary['22/4 Shielded (Intrusion)']?.totalFt || 0, unitCost: 0.38, laborHrs: 0.008, notes: 'Device runs' },
+          { system: 'INTRUSION', category: 'Cable', description: '22/4 Keypad Cable', manufacturer: 'West Penn', sku: '25254B-22', unit: 'FT', qty: cableSummary['22/4 (Intrusion Keypad)']?.totalFt || 0, unitCost: 0.38, laborHrs: 0.008, notes: 'Keypad runs' },
+          { system: 'INTRUSION', category: 'Communicator', description: 'IP/Cell Communicator', manufacturer: 'Bosch', sku: 'B450', unit: 'EA', qty: totalIntrusionDevices > 0 ? 1 : 0, unitCost: 285.00, laborHrs: 1.0, notes: 'Central station reporting' }
+        ];
+      })()
     ].filter(item => item.qty > 0); // Only include items with quantities
   };
 
