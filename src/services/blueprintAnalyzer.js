@@ -871,42 +871,62 @@ export function convertToDeviceCounts(aiResults) {
         CCTV: {},
         FIRE: {},
         INTERCOM: {},
-        'A/V': {}
+        'A/V': {},
+        OTHER: {}  // Catch-all for unknown systems
     };
 
     // Use totalsBySystem if available (from analyzeAllSheets)
-    if (aiResults.totalsBySystem) {
+    if (aiResults?.totalsBySystem && typeof aiResults.totalsBySystem === 'object') {
         for (const [system, devices] of Object.entries(aiResults.totalsBySystem)) {
-            if (deviceCounts[system]) {
-                for (const [deviceType, count] of Object.entries(devices)) {
-                    const cleanKey = deviceType.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
-                    deviceCounts[system][cleanKey] = {
-                        name: deviceType,
-                        qty: count,
-                        unit: 'EA'
-                    };
-                }
+            // Skip if devices is not an object
+            if (!devices || typeof devices !== 'object') {
+                console.warn(`[ConvertCounts] Skipping invalid system "${system}":`, devices);
+                continue;
             }
-        }
-    }
 
-    // Fallback to aggregatedDevices
-    if (aiResults.aggregatedDevices) {
-        for (const [key, deviceData] of Object.entries(aiResults.aggregatedDevices)) {
-            const system = deviceData.system || 'CABLING';
-            const cleanKey = deviceData.symbol.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+            // Use the system if it exists, otherwise use OTHER
+            const targetSystem = deviceCounts[system] ? system : 'OTHER';
 
-            if (deviceCounts[system]) {
-                deviceCounts[system][cleanKey] = {
-                    name: deviceData.symbol,
-                    qty: deviceData.totalQty,
-                    locations: deviceData.bySheet?.map(s => s.locations).filter(Boolean),
+            for (const [deviceType, count] of Object.entries(devices)) {
+                // Skip if count is not a valid number
+                const numCount = typeof count === 'number' ? count : parseInt(count);
+                if (isNaN(numCount) || numCount <= 0) {
+                    console.warn(`[ConvertCounts] Skipping invalid count for "${deviceType}":`, count);
+                    continue;
+                }
+
+                const cleanKey = deviceType.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+                deviceCounts[targetSystem][cleanKey] = {
+                    name: deviceType,
+                    qty: numCount,
                     unit: 'EA'
                 };
             }
         }
     }
 
+    // Fallback to aggregatedDevices
+    if (aiResults?.aggregatedDevices && typeof aiResults.aggregatedDevices === 'object') {
+        for (const [key, deviceData] of Object.entries(aiResults.aggregatedDevices)) {
+            // Skip invalid entries
+            if (!deviceData || typeof deviceData !== 'object' || !deviceData.symbol) {
+                continue;
+            }
+
+            const system = deviceData.system || 'CABLING';
+            const targetSystem = deviceCounts[system] ? system : 'OTHER';
+            const cleanKey = deviceData.symbol.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+
+            deviceCounts[targetSystem][cleanKey] = {
+                name: deviceData.symbol,
+                qty: deviceData.totalQty || 0,
+                locations: deviceData.bySheet?.map(s => s.locations).filter(Boolean),
+                unit: 'EA'
+            };
+        }
+    }
+
+    console.log('[ConvertCounts] Final device counts:', JSON.stringify(deviceCounts, null, 2).substring(0, 500));
     return deviceCounts;
 }
 
