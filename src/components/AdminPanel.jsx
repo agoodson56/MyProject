@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Trash2, Key, RefreshCw, Eye, EyeOff, LogOut, Save, AlertTriangle } from 'lucide-react';
+import { Shield, Trash2, Key, RefreshCw, Eye, EyeOff, LogOut, Save, AlertTriangle, Settings } from 'lucide-react';
+
+// Default admin password - stored in localStorage after first change
+const DEFAULT_ADMIN_PASSWORD = 'Admin3DTSI2026!';
 
 export default function AdminPanel() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,17 +16,50 @@ export default function AdminPanel() {
     const [saving, setSaving] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-    // Master admin password - change this!
-    const ADMIN_PASSWORD = 'Admin3DTSI2026!';
+    // Admin password change state
+    const [showAdminSettings, setShowAdminSettings] = useState(false);
+    const [newAdminPassword, setNewAdminPassword] = useState('');
+    const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+    const [adminPasswordError, setAdminPasswordError] = useState('');
+    const [adminPasswordSuccess, setAdminPasswordSuccess] = useState('');
+
+    // Get stored admin password or use default
+    const getAdminPassword = () => {
+        return localStorage.getItem('adminPassword') || DEFAULT_ADMIN_PASSWORD;
+    };
 
     const handleLogin = () => {
-        if (masterPassword === ADMIN_PASSWORD) {
+        if (masterPassword === getAdminPassword()) {
             setIsAuthenticated(true);
             setAuthError('');
             loadProjects();
         } else {
             setAuthError('Invalid admin password');
         }
+    };
+
+    const handleChangeAdminPassword = () => {
+        setAdminPasswordError('');
+        setAdminPasswordSuccess('');
+
+        if (newAdminPassword.length < 8) {
+            setAdminPasswordError('Password must be at least 8 characters');
+            return;
+        }
+
+        if (newAdminPassword !== confirmAdminPassword) {
+            setAdminPasswordError('Passwords do not match');
+            return;
+        }
+
+        // Save new password to localStorage
+        localStorage.setItem('adminPassword', newAdminPassword);
+        setAdminPasswordSuccess('Admin password updated successfully!');
+        setNewAdminPassword('');
+        setConfirmAdminPassword('');
+
+        // Hide success message after 3 seconds
+        setTimeout(() => setAdminPasswordSuccess(''), 3000);
     };
 
     const loadProjects = async () => {
@@ -134,6 +170,16 @@ export default function AdminPanel() {
 
                     <div className="flex items-center gap-3">
                         <button
+                            onClick={() => setShowAdminSettings(!showAdminSettings)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${showAdminSettings
+                                    ? 'bg-cyan-600 text-white'
+                                    : 'bg-slate-700 hover:bg-slate-600'
+                                }`}
+                        >
+                            <Settings className="w-4 h-4" />
+                            Settings
+                        </button>
+                        <button
                             onClick={loadProjects}
                             className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
                         >
@@ -149,6 +195,59 @@ export default function AdminPanel() {
                         </button>
                     </div>
                 </div>
+
+                {/* Admin Password Settings Panel */}
+                {showAdminSettings && (
+                    <div className="bg-slate-800/50 border border-cyan-500/30 rounded-2xl p-6 mb-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Settings className="w-5 h-5 text-cyan-400" />
+                            <h2 className="text-lg font-semibold text-white">Change Admin Password</h2>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">New Password</label>
+                                <input
+                                    type="password"
+                                    value={newAdminPassword}
+                                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                                    placeholder="Enter new password..."
+                                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">Confirm Password</label>
+                                <input
+                                    type="password"
+                                    value={confirmAdminPassword}
+                                    onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                                    placeholder="Confirm new password..."
+                                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleChangeAdminPassword()}
+                                />
+                            </div>
+                        </div>
+
+                        {adminPasswordError && (
+                            <p className="text-red-400 text-sm mt-3">{adminPasswordError}</p>
+                        )}
+                        {adminPasswordSuccess && (
+                            <p className="text-green-400 text-sm mt-3">{adminPasswordSuccess}</p>
+                        )}
+
+                        <button
+                            onClick={handleChangeAdminPassword}
+                            className="mt-4 px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                        >
+                            <Key className="w-4 h-4" />
+                            Update Password
+                        </button>
+
+                        <p className="text-slate-500 text-xs mt-3">
+                            Password is stored locally in your browser. Min 8 characters required.
+                        </p>
+                    </div>
+                )}
 
                 {/* Error */}
                 {error && (
