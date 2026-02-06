@@ -449,9 +449,9 @@ function buildValidationPrompt(gridCounts, legendInfo) {
         ? `\n\nKNOWN SYMBOLS FROM LEGEND:\n${legendInfo.symbols.map(s => `- ${s.description}: ${s.visualDescription}`).join('\n')}`
         : '';
 
-    return `You are an expert low-voltage construction estimator performing a FINAL VALIDATION COUNT.
+    return `You are an expert low-voltage construction estimator AND code compliance specialist performing a FINAL VALIDATION COUNT.
 
-YOUR TASK: Count ALL devices on this floor plan and provide bounding box coordinates for each one.
+YOUR TASK: Count ALL devices on this floor plan, provide bounding box coordinates, and validate CODE COMPLIANCE.
 ${gridSummary}
 ${symbolDescriptions}
 
@@ -467,9 +467,48 @@ SYSTEMS TO VALIDATE:
 - CABLING: Data Outlets, Voice Outlets, Fiber Outlets, WAP
 - ACCESS: Card Readers, REX Sensors, Door Contacts, Electric Strikes, Mag Locks
 - CCTV: Dome Cameras, Bullet Cameras, PTZ Cameras
-- FIRE: Smoke Detectors, Heat Detectors, Pull Stations, Horn/Strobes
+- FIRE: Smoke Detectors, Heat Detectors, Pull Stations, Horn/Strobes, Duct Detectors
 - INTERCOM: Intercom Stations, Speakers
 - A/V: Audio speakers, displays
+
+⚠️ CODE COMPLIANCE VALIDATION (CRITICAL - CHECK ALL OF THESE):
+
+NFPA 72 - Fire Alarm:
+- Smoke detector spacing: max 30ft apart or per manufacturer specs
+- Pull stations: Required within 5ft of exit doors, max 200ft travel distance
+- Horn/Strobes: Required in all occupiable spaces, bathrooms, corridors
+- Ceiling mount detectors: Center of room where possible
+- Wall mount strobes: 80-96 inches AFF (Above Finished Floor)
+
+NEC (National Electrical Code):
+- Low voltage pathways separate from power (min 2" separation or barrier)
+- Proper raceway fill (40% max for multiple cables)
+- Firestopping at penetrations
+
+TIA-568/569 - Structured Cabling:
+- Max cable run 295ft (90m horizontal + 10m combined patch)
+- Min 2 work area outlets per work area
+- TR/IDF within 295ft of all work areas
+- Proper cable bend radius
+
+ADA Accessibility:
+- Fire alarm notification appliances: 80-96" AFF
+- Visual notification in all public/common areas
+- Card readers: 48" max mounting height for accessibility
+- Accessible route to all fire alarm pull stations
+
+IBC - International Building Code:
+- Exit signage and emergency lighting coverage
+- Proper egress path coverage for notification
+
+FLAG THESE CODE VIOLATIONS:
+1. "NFPA72_SPACING" - Smoke detectors more than 30ft apart
+2. "NFPA72_PULL_STATION" - Missing pull station near exit
+3. "NFPA72_STROBE" - Missing horn/strobe in occupiable space
+4. "ADA_HEIGHT" - Device mounted outside accessible range
+5. "ADA_CARD_READER" - Card reader above 48" AFF
+6. "TIA_DISTANCE" - Work area potentially over 295ft from TR
+7. "NEC_SEPARATION" - Potential pathway separation issue
 
 OUTPUT FORMAT (JSON):
 {
@@ -506,6 +545,27 @@ OUTPUT FORMAT (JSON):
         "ACCESS": {"Card Reader": 8, "REX Sensor": 8},
         "CCTV": {"Dome Camera": 12, "Bullet Camera": 4}
     },
+    "codeCompliance": {
+        "status": "WARNINGS",
+        "violations": [
+            {
+                "code": "NFPA72_PULL_STATION",
+                "severity": "HIGH",
+                "location": "East exit door",
+                "description": "No pull station visible within 5ft of east exit",
+                "recommendation": "Add pull station per NFPA 72 17.14"
+            },
+            {
+                "code": "NFPA72_STROBE",
+                "severity": "MEDIUM",
+                "location": "Restroom area",
+                "description": "No visible strobe in restroom",
+                "recommendation": "Add ADA-compliant strobe per NFPA 72"
+            }
+        ],
+        "passed": ["TIA_DISTANCE", "NEC_SEPARATION"],
+        "notes": "2 potential code issues identified for review"
+    },
     "lowConfidenceDevices": [
         {"id": 5, "type": "Data Outlet", "confidence": 0.65, "reason": "Symbol partially obscured"}
     ],
@@ -515,10 +575,10 @@ OUTPUT FORMAT (JSON):
         {"name": "IDF-1", "floor": "Level 1", "x": 85.0, "y": 50.0, "type": "IDF"}
     ],
     "overallConfidence": 0.94,
-    "notes": "Final validation complete. 3 low-confidence symbols flagged for review."
+    "notes": "Final validation with code compliance check complete."
 }
 
-BE THOROUGH - mark EVERY device you can identify!`;
+BE THOROUGH - mark EVERY device and check ALL code requirements!`;
 }
 
 async function fullSheetValidation(filePart, gridCounts, legendInfo) {
