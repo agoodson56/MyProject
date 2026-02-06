@@ -34,7 +34,7 @@ export default function LVTakeoffSystem() {
   const [passwordError, setPasswordError] = useState('');
   const [showOverlay, setShowOverlay] = useState(false); // Floor plan verification overlay
   const [detectedDevices, setDetectedDevices] = useState([]); // AI-detected devices with coordinates
-  const [useAiAnalysis, setUseAiAnalysis] = useState(false); // Toggle for AI vs mock data
+  const [useAiAnalysis, setUseAiAnalysis] = useState(true); // AI Analysis ON by default
 
   // Cloud storage state
   const [showDashboard, setShowDashboard] = useState(true); // Show project dashboard first
