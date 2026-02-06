@@ -574,41 +574,52 @@ OUTPUT FORMAT (JSON):
             "floor": "Level 1",
             "location": "Main electrical room, near lobby",
             "feedsTo": ["IDF-1", "IDF-2"],
-            "equipment": {"Rack Units": 2, "Patch Panels": 4, "Switches": 2},
+            "dataPorts": 53,
+            "voicePorts": 20,
+            "fiberPorts": 0,
+            "cableRuns": 87,
+            "avgCableLength": 85,
+            "totalCableFt": 7395,
             "devicesFed": {
                 "CABLING": {"Data Outlet": 45, "Voice Outlet": 20, "WAP": 8},
                 "ACCESS": {"Card Reader": 4, "REX Sensor": 4, "Door Contact": 4},
                 "CCTV": {"Dome Camera": 6}
             },
-            "cableRuns": 87,
-            "notes": "Main hub - feeds lobby, admin offices, and connects to IDFs"
+            "notes": "Main hub - feeds lobby, admin offices"
         },
         {
             "name": "IDF-1",
             "floor": "Level 1",
             "location": "East wing electrical closet",
             "feedsFrom": "MDF",
-            "backboneType": "Fiber OM3 12-strand + Cat6 25-pair",
-            "equipment": {"Rack Units": 1, "Patch Panels": 2, "Switches": 1},
+            "dataPorts": 36,
+            "voicePorts": 12,
+            "fiberPorts": 6,
+            "cableRuns": 54,
+            "avgCableLength": 120,
+            "totalCableFt": 6480,
             "devicesFed": {
                 "CABLING": {"Data Outlet": 32, "Voice Outlet": 12, "WAP": 4},
                 "CCTV": {"Dome Camera": 4, "Bullet Camera": 2}
             },
-            "cableRuns": 54,
-            "notes": "Feeds east wing classrooms and offices"
+            "notes": "Feeds east wing"
         },
         {
             "name": "IDF-2",
             "floor": "Level 2",
             "location": "Second floor telecom room",
             "feedsFrom": "MDF",
-            "backboneType": "Fiber OM3 12-strand",
+            "dataPorts": 34,
+            "voicePorts": 0,
+            "fiberPorts": 2,
+            "cableRuns": 36,
+            "avgCableLength": 95,
+            "totalCableFt": 3420,
             "devicesFed": {
                 "CABLING": {"Data Outlet": 28, "WAP": 6},
                 "ACCESS": {"Card Reader": 2}
             },
-            "cableRuns": 36,
-            "notes": "Feeds second floor - all areas"
+            "notes": "Feeds second floor"
         }
     ],
     "summary": {

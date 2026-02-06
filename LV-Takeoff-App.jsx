@@ -837,7 +837,7 @@ export default function LVTakeoffSystem() {
 
       cableSummary: estimateCabling(aiResults),
 
-      closets: aiResults?.closets || generateClosetsFromDevices(aiResults),
+      closets: processClosets(aiResults?.closets, aiResults),
 
       backbones: aiResults?.backbones || [],
 
@@ -895,6 +895,65 @@ export default function LVTakeoffSystem() {
     }
 
     return bomItems;
+  };
+
+  // Process closets from AI - derive data/voice/fiber counts and calculate cable footage
+  const processClosets = (closets, aiResults) => {
+    if (!closets || !Array.isArray(closets) || closets.length === 0) {
+      return generateClosetsFromDevices(aiResults);
+    }
+
+    const AVG_CABLE_FT = 100; // Default average cable length
+
+    return closets.map(closet => {
+      // Get port counts - either from direct fields or derive from devicesFed
+      let dataPorts = closet.dataPorts || 0;
+      let voicePorts = closet.voicePorts || 0;
+      let fiberPorts = closet.fiberPorts || 0;
+      let cableRuns = closet.cableRuns || 0;
+      let totalCableFt = closet.totalCableFt || 0;
+
+      // If not provided, derive from devicesFed
+      if (closet.devicesFed && (!dataPorts && !voicePorts)) {
+        const cabling = closet.devicesFed.CABLING || {};
+        dataPorts = (cabling['Data Outlet'] || 0) + (cabling['WAP'] || 0);
+        voicePorts = cabling['Voice Outlet'] || 0;
+        fiberPorts = cabling['Fiber Outlet'] || 0;
+
+        // Add access control and CCTV to data ports (they use data cables)
+        const access = closet.devicesFed.ACCESS || {};
+        const cctv = closet.devicesFed.CCTV || {};
+        dataPorts += Object.values(access).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0);
+        dataPorts += Object.values(cctv).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0);
+      }
+
+      // Calculate cable runs if not provided
+      if (!cableRuns) {
+        cableRuns = dataPorts + voicePorts + fiberPorts;
+      }
+
+      // Calculate total cable footage if not provided
+      if (!totalCableFt && cableRuns > 0) {
+        const avgLength = closet.avgCableLength || AVG_CABLE_FT;
+        totalCableFt = cableRuns * avgLength;
+      }
+
+      return {
+        name: closet.name || 'Unknown',
+        type: closet.name?.includes('MDF') ? 'MDF' : closet.name?.includes('FACP') ? 'FACP' : 'IDF',
+        floor: closet.floor || 'Level 1',
+        room: closet.location || closet.room || '',
+        dataPorts,
+        voicePorts,
+        fiberPorts,
+        cableRuns,
+        totalCableFt,
+        feedsTo: closet.feedsTo || [],
+        feedsFrom: closet.feedsFrom || null,
+        devicesFed: closet.devicesFed || {},
+        notes: closet.notes || ''
+      };
+    });
   };
 
   // Generate closet summary from AI device counts - calculates cable runs based on actual devices
