@@ -1070,13 +1070,26 @@ export default function LVTakeoffSystem() {
   const handleFileDrop = useCallback((e, type) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer?.files || e.target.files || []);
-    const validFiles = files.filter(f =>
-      f.type === 'application/pdf' ||
-      f.type.startsWith('image/')
-    );
+    console.log('📁 Files received:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+
+    // More permissive file validation - check extension if MIME type is empty
+    const validFiles = files.filter(f => {
+      const isPDF = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+      const isImage = f.type.startsWith('image/') ||
+        f.name.toLowerCase().endsWith('.jpg') ||
+        f.name.toLowerCase().endsWith('.jpeg') ||
+        f.name.toLowerCase().endsWith('.png');
+      return isPDF || isImage;
+    });
+
+    console.log('✅ Valid files:', validFiles.map(f => f.name));
 
     if (type === 'plans') {
-      setPlanFiles(prev => [...prev, ...validFiles]);
+      setPlanFiles(prev => {
+        const newFiles = [...prev, ...validFiles];
+        console.log('📊 Plan files after add:', newFiles.length);
+        return newFiles;
+      });
     } else {
       setSpecFiles(prev => [...prev, ...validFiles]);
     }
